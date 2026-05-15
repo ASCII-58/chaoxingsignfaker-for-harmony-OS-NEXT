@@ -38,10 +38,10 @@ export interface CaptchaPhotosParam {
 
 export interface CaptchaPhotosResult {
   'token': string;
-  'imageVerificationVo': twoImg
+  'imageVerificationVo': Img
 }
 
-export interface twoImg {
+export interface Img {
   'shadeImage': string;
   'cutoutImage': string;
 }
@@ -61,49 +61,45 @@ export interface SignQueryParams {
   longitude: string;
 }
 
+export interface PreSignParamInterface {
+  activePrimaryId: string,
+  classId: string,
+  courseId: string,
+  uid?: number
+}
+
+export interface CheckCaptchaParam{
+  captchaId:string
+  token:string
+  textClickArr:string
+}
+
 export class Sign {
-  static async DoPreSignIn(activePrimaryId: number, classId: number, courseId: number, cookies: string) {
+  private static async httpGetString(url: string, cookies: string): Promise<string> {
     const httpRequest = http.createHttp()
     try {
-      const URL = ChaoXingApi.URL_PRE_SIGN
-        .buildUrl({
-          'activePrimaryId': activePrimaryId,
-          'classId': classId,
-          'courseId': courseId
-        })
-        .toString()
-      const result = await httpRequest.request(URL, {
+      const result = await httpRequest.request(url, {
         method: http.RequestMethod.GET,
-        header: {
-          "Cookie": cookies
-        }
+        header: { "Cookie": cookies }
       })
-      const isSign: boolean = (result.result as string).includes(SIGN_TIME_MARKER)
-      return isSign
+      return result.result.toString()
     } finally {
       httpRequest.destroy()
     }
+  }
+
+  static async DoPreSignIn(PreSignParam: PreSignParamInterface, cookies: string) {
+    const URL = ChaoXingApi.URL_PRE_SIGN.buildUrl(PreSignParam).toString()
+    const result = await Sign.httpGetString(URL, cookies)
+    return result.includes(SIGN_TIME_MARKER)
   }
 
   static async DoSignIn(cookies: string, queryParams: object, NeedDeviceCode: boolean = false) {
     const url = ChaoXingApi.URL_SIGN.buildUrl(queryParams).buildUrl({
       deviceCode: NeedDeviceCode ? ChaoxingUtils.generateUUIDv4() : ''
     }).toString()
-
-    console.log('BuildUrl\n' + url + '\ncookies\n' + cookies)
     hilog.debug(DOMAIN, TAG, 'Executing sign-in request');
-    const httpRequest = http.createHttp()
-    try {
-      const result = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        header: {
-          "Cookie": cookies
-        }
-      })
-      return result.result.toString()
-    } finally {
-      httpRequest.destroy()
-    }
+    return Sign.httpGetString(url, cookies)
   }
 
   static async DoSignInV2(cookies: string, CommonQueryParams: object, userQueryParams: UserQueryObject,
@@ -115,18 +111,7 @@ export class Sign {
       })
       .toString()
     hilog.debug(DOMAIN, TAG, 'Executing sign-in V2 request');
-    const httpRequest = http.createHttp()
-    try {
-      const result = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        header: {
-          "Cookie": cookies
-        }
-      })
-      return result.result.toString()
-    } finally {
-      httpRequest.destroy()
-    }
+    return Sign.httpGetString(url, cookies)
   }
 
   static async GetLocationSignInfo(cookies: string, activeId: string): Promise<object> {
@@ -173,9 +158,9 @@ export class Sign {
           "Cookie": cookies
         }
       })
-      const tokenobj: string = result.result.toString()
+      const tokenOBJ: string = result.result.toString()
       hilog.debug(DOMAIN, TAG, 'Token response received');
-      const token: string = (JSON.parse(tokenobj) as object)?.['_token'] as string
+      const token: string = (JSON.parse(tokenOBJ) as object)?.['_token'] as string
       hilog.info(DOMAIN, TAG, `token obtained: ${token ? 'success' : 'failed'}`);
       return token
     } catch (e) {
@@ -288,7 +273,7 @@ export class Sign {
     }
   }
 
-  static async checkCaptchaResult() {
+  static async checkCaptchaResult(ParamForCaptcha: object, ParamForRefer: PreSignParamInterface) {
     const httpRequest = http.createHttp()
     try {
     } catch (e) {
@@ -363,24 +348,12 @@ export class Sign {
    * @returns 签到结果
    */
   static async DoSignWithCode(cookies: string, queryParams: object, signCode: string): Promise<string> {
-    // 分两次调用 buildUrl：先添加基础参数，再添加签到特定参数（deviceCode 和 signCode）
     const url = ChaoXingApi.URL_SIGN.buildUrl(queryParams).buildUrl({
       deviceCode: ChaoxingUtils.generateUUIDv4(),
       signCode: signCode
     }).toString()
     hilog.debug(DOMAIN, TAG, 'Executing sign with code request');
-    const httpRequest = http.createHttp()
-    try {
-      const result = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        header: {
-          "Cookie": cookies
-        }
-      })
-      return result.result.toString()
-    } finally {
-      httpRequest.destroy()
-    }
+    return Sign.httpGetString(url, cookies)
   }
 
   /**
@@ -396,20 +369,11 @@ export class Sign {
       'signOutId': signOutId
     }).toString()
     hilog.debug(DOMAIN, TAG, 'Executing sign out request');
-    const httpRequest = http.createHttp()
     try {
-      const result = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        header: {
-          "Cookie": cookies
-        }
-      })
-      return result.result.toString()
+      return await Sign.httpGetString(url, cookies)
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Sign out failed: ${e.message}`);
       throw new Error(`Sign out failed: ${e.message}`)
-    } finally {
-      httpRequest.destroy()
     }
   }
 

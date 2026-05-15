@@ -5,13 +5,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "C:\\Users\\x\\.ohos\\config\\default_chaoxingsignfacker_4m366ikA1PEP-Jsn1cMcZTfP-8Z_SPkUuOInCz1kfso=.cer",
+          "certpath": "C:\\Users\\xyxy1\\.ohos\\config\\default_chaoxingsignfaker_MQig3IhmKLhASxf9C67UksPASkt8v3Itige_Sz2NNp8=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001BE7F7371D8DAA00EC8BC865D0955B4B891797AAA2B461F5DAD16AB931F8BF925F560E905455EE8A",
-          "profile": "C:\\Users\\x\\.ohos\\config\\default_chaoxingsignfacker_4m366ikA1PEP-Jsn1cMcZTfP-8Z_SPkUuOInCz1kfso=.p7b",
+          "keyPassword": "0000001BD62D409089C7B9223051C9BFC9FE9BDEE86CB57E539B4B2741B244272BD132E89B2C1FD4AB1A14",
+          "profile": "C:\\Users\\xyxy1\\.ohos\\config\\default_chaoxingsignfaker_MQig3IhmKLhASxf9C67UksPASkt8v3Itige_Sz2NNp8=.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\x\\.ohos\\config\\default_chaoxingsignfacker_4m366ikA1PEP-Jsn1cMcZTfP-8Z_SPkUuOInCz1kfso=.p12",
-          "storePassword": "0000001B00C471FDD51A0010DDE499EE088E873CDCABEF865A1FFD2DA8990E625D3F55AC112BF7F067ACA2"
+          "storeFile": "C:\\Users\\xyxy1\\.ohos\\config\\default_chaoxingsignfaker_MQig3IhmKLhASxf9C67UksPASkt8v3Itige_Sz2NNp8=.p12",
+          "storePassword": "0000001B2444E2731F11A793D9D558D1E23A8AC0686EC3EC4CFCA3FA09861D488099C3490B1E273A6BE731"
         }
       }
     ],

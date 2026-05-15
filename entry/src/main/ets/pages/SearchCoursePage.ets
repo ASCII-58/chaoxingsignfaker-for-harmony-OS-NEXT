@@ -1,18 +1,3 @@
-/*
- * Copyright (c) 2024 Huawei Device Co., Ltd.
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 import { curves, promptAction } from '@kit.ArkUI';
 import { CourseAndActivity, ClassInfo } from '../utils/classFun';
 import { DatabaseManager } from '../utils/DataBase';
@@ -251,7 +236,7 @@ export default struct SearchLongTakeTransitionPageTwo {
             .layoutWeight(1)
             .borderRadius(20)
             .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
-            .geometryTransition('SEARCH_ONE_SHOT_DEMO_TRANSITION_ID', { follow: true })
+            .geometryTransition('SEARCH_ONE_SHOT_DEMO_TRANSITION_ID')
             .transition(TransitionEffect.opacity(0.99))
             .defaultFocus(true)
             .focusOnTouch(true)
@@ -348,7 +333,7 @@ export default struct SearchLongTakeTransitionPageTwo {
       })
       .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
     }
-    .transition(TransitionEffect.OPACITY)
+    // .transition(TransitionEffect.OPACITY)
     .hideTitleBar(true)
     .backgroundColor($r('sys.color.ohos_id_color_background'))
     .onReady((context: NavDestinationContext) => {

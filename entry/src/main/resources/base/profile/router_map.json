@@ -9,14 +9,17 @@
       "name" : "SignerPage",
       "pageSourceFile": "src/main/ets/pages/SignerPage.ets",
       "buildFunction": "initSignInfo"
-    },
-    {
-      "name" : "TestPage",
-      "pageSourceFile" : "src/main/ets/pages/TestPage.ets",
-      "buildFunction": "init"
     },{
       "name" : "SearchCoursePage",
       "pageSourceFile" : "src/main/ets/pages/SearchCoursePage.ets",
+      "buildFunction": "init"
+    },{
+      "name" : "HomePage",
+      "pageSourceFile": "src/main/ets/pages/newIndex.ets",
+      "buildFunction": "init"
+    },{
+      "name" : "LoginPage",
+      "pageSourceFile": "src/main/ets/pages/LoginPage.ets",
       "buildFunction": "init"
     }
   ]

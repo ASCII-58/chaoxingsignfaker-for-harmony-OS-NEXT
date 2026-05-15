@@ -3,7 +3,7 @@ import { loginFunction } from '../utils/Login';
 import image from '@ohos.multimedia.image';
 import { ClassInfo, CourseAndActivity } from '../utils/classFun';
 import { scanBarcode, scanCore } from '@kit.ScanKit';
-import { curves, UIContext } from '@kit.ArkUI';
+import { curves, UIContext,  } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import promptAction from '@ohos.promptAction';
@@ -18,6 +18,13 @@ import { SettingsComponent } from '../Component/SettingsComponent';
 
 const TAG = 'IndexPage';
 const DOMAIN = 0x0004;
+
+interface UserInfoComponentInterface {
+  hostName: Resource | string
+  hostPhone: Resource | string
+  QRvalue: string,
+  url:string
+}
 
 @Reusable
 @Component
@@ -121,80 +128,44 @@ struct ClassIcon {
   }
 }
 
-@Entry
+@Builder
+export function init(name: string) {
+  HomePage()
+}
+
 @Component
-struct UI {
-  @State UserListIsShow: boolean = false;
-  @State UserListHeight: number = 0;
-  @State footerHeight: number = 80;
-  @State arrowAngle: number = 0;
-  @State currentIndex: number = 0;
-  @State HostImageData: image.PixelMap | Resource = $r('app.media.foreground'); // 用于存储下载的图片二进制数据
-  @State hostName: Resource | string = $r('app.string.defaultUname')
-  @State hostPhone: Resource | string = $r('app.string.defaultPhone')
-  @State QRvalue: string = '';
-  @State QRCode: image.PixelMap | null = null
+struct UserInfoComponent {
+  @State HostImageData: image.PixelMap | Resource =$r('app.media.foreground')
+  @Prop url:string
+  @Prop hostName: Resource | string
+  @Prop hostPhone: Resource | string
+  @Prop QRvalue: string
+  @State QRCode: image.PixelMap | null =null
   @State QRCodeDialogIsShow: boolean = false
   @State isSettingsOpen: boolean = false
-  @State titleName: string = '首页'
-  @State classList: ClassInfo[] | null = null
-  @Provide('pathInfos') pathInfos: NavPathStack = new NavPathStack();
-  @State LoginCommonIsShow: boolean = false
-  @State LoginURLIsSHow: boolean = false
-  @State clickTime: number = 0
-  @State otherUserList: UserDataAndId[] = []
   @State shareButtonScale: number = 1
-  @State userHeaderOpacity: number = 0
-  @State userHeaderTranslateY: number = -20
-  @State buttonRowOpacity: number = 0
-  @State buttonRowTranslateY: number = 20
-  @State userListOpacity: number = 0
-  @State userListTranslateY: number = 30
-  @State userHeaderScale: number = 0.8
-  @State buttonRowScale: number = 0.8
-  @State userListScale: number = 0.8
-  @State githubEmailOpacity: number = 1;
-  private controller: TabsController = new TabsController();
+  @State userHeaderOpacity: number = 1
+  @State userHeaderTranslateY: number = 0
+  @State userHeaderScale: number = 1
+  private pageInfos: NavPathStack | null = null
   private uiContext: UIContext = this.getUIContext();
   private context: Context = this.uiContext.getHostContext() as Context;
-  private openLinkContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
-  private animationTimeoutId: number = -1;
-
-  @Builder
-  tabBuilder(title: string, targetIndex: number) {
-    Column() {
-      Text(title)
-        .fontColor(this.currentIndex === targetIndex ? $r('sys.color.font_emphasize') : $r('sys.color.font_primary'))
-        .fontWeight(this.currentIndex === targetIndex ? FontWeight.Bold : FontWeight.Regular)
-        .fontSize(this.currentIndex === targetIndex ? $r('sys.float.Caption_L') : $r('sys.float.Caption_M'))
-        .onClick(() => {
-          this.currentIndex = targetIndex;
-          this.controller.changeIndex(targetIndex);
-        })
-
-      if (this.currentIndex === targetIndex) {
-        Divider()
-          .strokeWidth(2)
-          .color($r('sys.color.icon_emphasize'))
-          .width(20)
-          .margin({ top: 4 })
-      }
-    }
-    .width('25%')
-    .height(20)
-    .justifyContent(FlexAlign.Center)
-  }
-
-  @Builder
-  shareTitle() {
-    Text('分享')
-      .fontSize(40)
-      .textAlign(TextAlign.Center)
-  }
 
   @Builder
   SettingsBuilder() {
     SettingsComponent({ isShow: $isSettingsOpen })
+  }
+
+  @Builder
+  HeaderBtnContent(img: Resource, fill: ResourceColor) {
+    Column() {
+      Image(img)
+        .height(30).width(30)
+        .fillColor(fill)
+    }
+    .height(45).width(45)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
   }
 
   @Builder
@@ -296,6 +267,228 @@ struct UI {
     .borderRadius({ topLeft: 20, topRight: 20 })
   }
 
+  build() {
+    Column() {
+      Row() {
+        Image(this.HostImageData)
+          .width(50)
+          .height(50)
+          .borderRadius(90)// 设置圆角
+          .objectFit(ImageFit.Cover)// 图片填充模式
+          .alt($r('app.media.foreground'))
+          .margin({ left: 7.5 }).onAppear(async ()=>{
+          if (this.url!=='') {
+            this.HostImageData = await loginFunction.GetPic(this.url) as PixelMap
+          }
+        })
+
+        Column() {
+          Text(this.hostName)
+            .fontSize(20)
+            .fontWeight(FontWeight.Medium)
+            .textAlign(TextAlign.Start)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text(this.hostPhone)
+            .fontSize(12)
+            .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+        }
+        .margin({ left: 10 })
+        .alignItems(HorizontalAlign.Start)
+
+        Blank().layoutWeight(1)
+
+        AnimButton({
+          content: () => {
+            this.HeaderBtnContent($r('app.media.settings'), $r('app.color.icon'))
+          },
+          onClickAction: () => {
+            this.isSettingsOpen = !this.isSettingsOpen
+          }
+        })
+          .margin({ right: 10 })
+          .bindSheet($$this.isSettingsOpen, this.SettingsBuilder(), {
+            height: 'auto',
+            detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+            backgroundColor: $r('sys.color.ohos_id_color_sub_background'),
+            onWillDismiss: () => {
+              this.isSettingsOpen = false
+            }
+          })
+
+        AnimButton({
+          content: () => {
+            this.HeaderBtnContent($r('app.media.share'), $r('app.color.icon'))
+          },
+          onClickAction: () => {
+            this.QRCodeDialogIsShow = !this.QRCodeDialogIsShow
+          }
+        })
+          .margin({ right: 10 })
+          .bindSheet($$this.QRCodeDialogIsShow, this.QRCodeDialog, {
+            height: 'auto',
+            detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+            backgroundColor: $r('sys.color.ohos_id_color_sub_background'),
+            onWillDismiss: () => {
+              this.QRCodeDialogIsShow = false
+            }
+          })
+
+        AnimButton({
+          content: () => {
+            this.HeaderBtnContent($r('app.media.ic_public_quit'), Color.Red)
+          },
+          onClickAction: () => {
+            this.showLogoutDialog()
+          }
+        })
+          .margin({ right: 10 })
+      }
+      .width('97%')
+      .height(70)
+      .backgroundColor($r('app.color.header_background'))
+      .borderRadius(35)
+      .padding({ left: 5, right: 5 })
+      .zIndex(999999)
+      .shadow({
+        radius: 10,
+        color: '#00000025',
+        offsetX: 0,
+        offsetY: 4
+      })
+      .scale({ x: this.userHeaderScale, y: this.userHeaderScale })
+      .opacity(this.userHeaderOpacity)
+      .translate({ y: this.userHeaderTranslateY })
+    }.width('100%')
+    .justifyContent(FlexAlign.Start)
+  }
+
+  private async share(ShareUri: string, ShareStr: string) {
+    const uiContext: UIContext = this.getUIContext();
+
+    let uri: string | undefined = undefined;
+    try {
+      uri = ShareUri
+    } catch (error) {
+      console.error(`getUriFromPath error. Code: ${error?.code}, message: ${error?.message}`);
+    }
+
+    if (!uri) {
+      console.error('getUriFromPath error.');
+      return;
+    }
+
+    let shareData: systemShare.SharedData = new systemShare.SharedData({
+      utd: utd.UniformDataType.IMAGE,
+      uri: uri,
+      title: '分享二维码',
+      description: '分享二维码',
+      label: '二维码'
+    });
+
+    try {
+      shareData.addRecord({
+        utd: utd.UniformDataType.PLAIN_TEXT,
+        content: ShareStr,
+        title: '分享url',
+        description: '可通过分享的url添加账号',
+        label: 'url',
+      });
+    } catch (error) {
+      console.error(`addRecord error. Code: ${error?.code}, message: ${error?.message}`);
+    }
+
+    let controller: systemShare.ShareController = new systemShare.ShareController(shareData);
+    const context: common.UIAbilityContext = uiContext.getHostContext() as common.UIAbilityContext;
+    controller.show(context, {
+      selectionMode: systemShare.SelectionMode.SINGLE,
+      previewMode: systemShare.SharePreviewMode.DETAIL,
+    }).then(() => {
+      console.info('ShareController show success.');
+    }).catch((error: BusinessError) => {
+      console.error(`ShareController show error. code: ${error?.code}, message: ${error?.message}`);
+    });
+  }
+
+  private async showLogoutDialog() {
+    AlertDialog.show({
+      title: '退出登录',
+      message: `确认退出登录吗？\n`,
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '退出',
+        action: async () => {
+          const dbManager = DatabaseManager.getInstance()
+          try {
+            await dbManager.clearHostUserTable()
+          } catch (error) {
+            hilog.error(DOMAIN, TAG, `Failed to clear host user: ${error.message}`);
+          }
+          if (this.pageInfos !== null) {
+            this.pageInfos.replacePath({ name: "LoginPage" }, false)
+          }
+        }
+      }
+    })
+  }
+}
+
+@Component
+export default struct HomePage {
+  @State UserListIsShow: boolean = false; // 在 animateTo 中被读取和修改
+  @State UserListHeight: number = 0; // 在 animateTo 中被修改，在 List 的 .height() 中被读取
+  @State footerHeight: number = 80; // 在 animateTo 中被修改，在 Row 的 .height() 中被读取
+  @State arrowAngle: number = 0; // 在 animateTo 中被修改，在 ArrowButtonContent 的 .rotate() 中被读取
+  @State currentIndex: number = 0; // 在 tabBuilder 中被读取和修改，在 Tabs 的 .onChange() 中被修改
+  @State titleName: string = '首页'; // 在 Tabs 的 .onChange() 中被修改，在 NavDestination 的 .title() 中被读取
+  @State classList: ClassInfo[] | null = null; // 在 ForEach 中被读取，在 .onAppear 中被赋值
+  @State LoginCommonIsShow: boolean = false; // 在 .onClick 和 .onWillDismiss 中被修改，在 .bindSheet 中被读取
+  @State LoginURLIsSHow: boolean = false; // 在 .onClick 和 .onWillDismiss 中被修改，在 .bindSheet 中被读取
+  @State otherUserList: UserDataAndId[] = []; // 在 ForEach 中被读取，在异步回调中被赋值
+  @State buttonRowOpacity: number = 1;
+  @State buttonRowTranslateY: number = 0;
+  @State userListOpacity: number = 1;
+  @State buttonRowScale: number = 1;
+  @State githubEmailOpacity: number = 1;
+  @State UserInfoComponentData: UserInfoComponentInterface = {
+    hostName: $r('app.string.defaultUname'),
+    hostPhone: $r('app.string.defaultPhone'),
+    QRvalue: '',
+    url:''
+  }
+  private pageInfos: NavPathStack = new NavPathStack();
+  private controller: TabsController = new TabsController();
+  private openLinkContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
+
+  @Builder
+  tabBuilder(title: string, targetIndex: number) {
+    Column() {
+      Text(title)
+        .fontColor(this.currentIndex === targetIndex ? $r('sys.color.font_emphasize') : $r('sys.color.font_primary'))
+        .fontWeight(this.currentIndex === targetIndex ? FontWeight.Bold : FontWeight.Regular)
+        .fontSize(this.currentIndex === targetIndex ? $r('sys.float.Caption_L') : $r('sys.float.Caption_M'))
+        .onClick(() => {
+          this.currentIndex = targetIndex;
+          this.controller.changeIndex(targetIndex);
+        })
+
+      if (this.currentIndex === targetIndex) {
+        Divider()
+          .strokeWidth(2)
+          .color($r('sys.color.icon_emphasize'))
+          .width(20)
+          .margin({ top: 4 })
+      }
+    }
+    .width('25%')
+    .height(20)
+    .justifyContent(FlexAlign.Center)
+  }
+
   @Builder
   loginCommon() {
     loginByCommon({ isShow: this.LoginCommonIsShow, otherUserList: this.otherUserList })
@@ -307,8 +500,8 @@ struct UI {
   }
 
   build() {
-    Navigation(this.pathInfos) {
-      Tabs({ controller: this.controller }) {
+    NavDestination() {
+      Tabs({ controller: this.controller ,index:this.currentIndex}) {
         TabContent() {
           Column() {
             // 固定的搜索框
@@ -340,7 +533,7 @@ struct UI {
                 }
                 .width('100%')
                 .onClick(() => {
-                  this.pathInfos.pushPath({ name: 'ActivityListPage', param: classInfo });
+                  this.pageInfos.pushPath({ name: 'ActivityListPage', param: classInfo });
                 })
               }, (classInfo: ClassInfo) => classInfo.id)
             }
@@ -360,105 +553,10 @@ struct UI {
         TabContent() {
           Column() {
             Column().height(56)
-            Column() {
-              Row() {
-                Image(this.HostImageData)
-                  .width(50)
-                  .height(50)
-                  .borderRadius(90)// 设置圆角
-                  .objectFit(ImageFit.Cover)// 图片填充模式
-                  .alt($r('app.media.foreground'))
-                  .margin({ left: 7.5 })
-                  .onClick(() => {
-                    if ((++this.clickTime) > 9) {
-                      this.clickTime = 0
-                      this.pathInfos.pushPath({ name: 'TestPage' });
-                    }
-                  })
-
-                Column() {
-                  Text(this.hostName)
-                    .fontSize(20)
-                    .fontWeight(FontWeight.Medium)
-                    .textAlign(TextAlign.Start)
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(this.hostPhone)
-                    .fontSize(12)
-                    .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-                }
-                .margin({ left: 10 })
-                .alignItems(HorizontalAlign.Start)
-
-                Blank().layoutWeight(1)
-
-                AnimButton({
-                  content: () => {
-                    this.HeaderBtnContent($r('app.media.settings'), $r('app.color.icon'))
-                  },
-                  onClickAction: () => {
-                    this.isSettingsOpen = !this.isSettingsOpen
-                  }
-                })
-                  .margin({ right: 10 })
-                  .bindSheet($$this.isSettingsOpen, this.SettingsBuilder(), {
-                    height: 'auto',
-                    detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-                    backgroundColor: $r('sys.color.ohos_id_color_sub_background'),
-                    onWillDismiss: () => {
-                      this.isSettingsOpen = false
-                    }
-                  })
-
-                AnimButton({
-                  content: () => {
-                    this.HeaderBtnContent($r('app.media.share'), $r('app.color.icon'))
-                  },
-                  onClickAction: () => {
-                    this.QRCodeDialogIsShow = !this.QRCodeDialogIsShow
-                  }
-                })
-                  .margin({ right: 10 })
-                  .bindSheet($$this.QRCodeDialogIsShow, this.QRCodeDialog, {
-                    height: 'auto',
-                    detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-                    backgroundColor: $r('sys.color.ohos_id_color_sub_background'),
-                    onWillDismiss: () => {
-                      this.QRCodeDialogIsShow = false
-                    }
-                  })
-
-                AnimButton({
-                  content: () => {
-                    this.HeaderBtnContent($r('app.media.ic_public_quit'), Color.Red)
-                  },
-                  onClickAction: () => {
-                    this.showLogoutDialog()
-                  }
-                })
-                  .margin({ right: 10 })
-              }
-              .width('97%')
-              .height(70)
-              .backgroundColor($r('app.color.header_background'))
-              .borderRadius(35)
-              .padding({ left: 5, right: 5 })
-              .zIndex(999999)
-              .shadow({
-                radius: 10,
-                color: '#00000025',
-                offsetX: 0,
-                offsetY: 4
-              })
-              .scale({ x: this.userHeaderScale, y: this.userHeaderScale })
-              .opacity(this.userHeaderOpacity)
-              .translate({ y: this.userHeaderTranslateY })
-            }.width('100%')
-            .justifyContent(FlexAlign.Start)
+            UserInfoComponent(this.UserInfoComponentData)
 
             Column() {
               Row() {
-
                 AnimButton({
                   content: () => {
                     this.IconBtnContent($r('app.media.qrcode'))
@@ -607,14 +705,17 @@ struct UI {
                 .justifyContent(FlexAlign.Center)
                 .width('96%')
                 .height(this.footerHeight)
-                .opacity(this.githubEmailOpacity).backgroundColor($r('sys.color.ohos_id_color_card_bg'))
-                .borderRadius(20).shadow({
+                .opacity(this.githubEmailOpacity)
+                .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
+                .borderRadius(20)
+                .shadow({
                   radius: 30,
                   color: 'rgba(10, 89, 247, 0.2)',
                   offsetX: 0,
                   offsetY: 5
                 })
-                .border({ width: 1, color: 'rgba(255, 255, 255, 0.6)' }).margin({ bottom: '2%' })
+                .border({ width: 1, color: 'rgba(255, 255, 255, 0.6)' })
+                .margin({ bottom: '2%' })
               }
               .width('100%')
             }
@@ -634,27 +735,6 @@ struct UI {
             .border({ width: 1, color: 'rgba(255, 255, 255, 0.6)' })
           }.height('100%')
         }.tabBar($r('app.string.user'))
-        .onAppear(() => {
-          // Animate user center elements with staggered timing
-          this.playStaggeredEntrance(100, () => {
-            this.userHeaderOpacity = 1
-            this.userHeaderTranslateY = 0
-            this.userHeaderScale = 1
-          })
-
-          this.playStaggeredEntrance(200, () => {
-            this.buttonRowOpacity = 1
-            this.buttonRowTranslateY = 0
-            this.buttonRowScale = 1
-          })
-
-          this.playStaggeredEntrance(300, () => {
-            this.userListOpacity = 1
-            this.userListTranslateY = 0
-            this.userListScale = 1
-          })
-        })
-
       }
       .height('100%')
       .barWidth('100%')
@@ -670,10 +750,10 @@ struct UI {
       .scrollable(false)
       .onChange((index) => {
         this.titleName = index === 0 ? '首页' : '用户中心'
+        this.currentIndex =index
       })
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }
-    .mode(NavigationMode.Auto)
     .backgroundColor($r('sys.color.comp_background_secondary'))
     .title(this.titleName, {
       backgroundBlurStyle: BlurStyle.BACKGROUND_THICK, barStyle: BarStyle.STACK, backgroundBlurStyleOptions: {
@@ -681,15 +761,16 @@ struct UI {
         adaptiveColor: AdaptiveColor.AVERAGE,
         blurOptions: { grayscale: [20, 20] },
         scale: 1
-      },
-
+      }
     })
-    .titleMode(NavigationTitleMode.Mini)
     .hideBackButton(true)
     .backgroundImageSize({ width: '100%', height: '100%' })
     .borderRadius($r('sys.float.corner_radius_level8'))
     .height('100%')
     .width('100%')
+    .onReady((ctx: NavDestinationContext) => {
+      this.pageInfos = ctx.pathStack;
+    })
     .onAppear(async () => {
       try {
         const dbManager = DatabaseManager.getInstance()
@@ -698,25 +779,33 @@ struct UI {
           await loginFunction.getUserInfo(hostUser.cookies)
         if (HostUser.msg !== 'successful') {
           hilog.error(DOMAIN, TAG, `Failed to fetch host user info: ${HostUser.msg}`);
-          this.uiContext.getRouter().replaceUrl({ url: 'pages/Login' });
+          this.pageInfos.replacePath({ name: "LoginPage" }, false)
           return
         }
         this.otherUserList = await dbManager.getAllUsers()
         hilog.debug(DOMAIN, TAG, `Loaded ${this.otherUserList.length} other users`);
         let url = HostUser.pic
-        this.HostImageData = await loginFunction.GetPic(url) as image.PixelMap
-        this.hostName = HostUser.uname
-        this.hostPhone = hostUser.phone
-        this.QRvalue =
-          `http://cdn.aquamarine5.fun/?phone=${this.hostPhone}&pwd=${encodeURIComponent(hostUser.pwd)}&name=${decodeURIComponent(this.hostName)}`
-        if (this.hostName.toString() === $r('app.string.defaultUname').toString()) {
-          this.uiContext.getRouter().pushUrl({ url: 'pages/Login' });
-        }
+        this.UserInfoComponentData.url = url
+        this.UserInfoComponentData.hostName = HostUser.uname
+        this.UserInfoComponentData.hostPhone = hostUser.phone
+        this.UserInfoComponentData.QRvalue =
+          `http://cdn.aquamarine5.fun/?phone=${this.UserInfoComponentData.hostPhone}&pwd=${encodeURIComponent(hostUser.pwd)}&name=${decodeURIComponent(this.UserInfoComponentData.hostName)}`
       } catch (e) {
         hilog.error(DOMAIN, TAG, `Error in onAppear: ${e.message}`);
       }
     })
-
+    .onBackPressed(() => {
+      if (this.currentIndex === 1) {
+          this.currentIndex = 0;
+          this.controller.changeIndex(0);
+          return true;
+        }
+      return true;
+    })
+    // .onBackPressed(() => {
+    //
+    //   return true;
+    // })
   }
 
   @Builder
@@ -742,7 +831,8 @@ struct UI {
   @Builder
   ArrowButtonContent() {
     Image($r('sys.media.ohos_ic_public_arrow_down'))
-      .height(30).width(30)
+      .height(30)
+      .width(30)
       .fillColor($r('app.color.icon'))
       .margin(15)
       .rotate({ angle: this.arrowAngle })
@@ -757,89 +847,8 @@ struct UI {
       .margin(10)
   }
 
-  private async share(ShareUri: string, ShareStr: string) {
-    const uiContext: UIContext = this.getUIContext();
-
-    let uri: string | undefined = undefined;
-    try {
-      uri = ShareUri
-    } catch (error) {
-      console.error(`getUriFromPath error. Code: ${error?.code}, message: ${error?.message}`);
-    }
-
-    if (!uri) {
-      console.error('getUriFromPath error.');
-      return;
-    }
-
-    let shareData: systemShare.SharedData = new systemShare.SharedData({
-      utd: utd.UniformDataType.IMAGE,
-      uri: uri,
-      title: '分享二维码',
-      description: '分享二维码',
-      label: '二维码'
-    });
-
-    try {
-      shareData.addRecord({
-        utd: utd.UniformDataType.PLAIN_TEXT,
-        content: ShareStr,
-        title: '分享url',
-        description: '可通过分享的url添加账号',
-        label: 'url',
-      });
-    } catch (error) {
-      console.error(`addRecord error. Code: ${error?.code}, message: ${error?.message}`);
-    }
-
-    let controller: systemShare.ShareController = new systemShare.ShareController(shareData);
-    const context: common.UIAbilityContext = uiContext.getHostContext() as common.UIAbilityContext;
-    controller.show(context, {
-      selectionMode: systemShare.SelectionMode.SINGLE,
-      previewMode: systemShare.SharePreviewMode.DETAIL,
-    }).then(() => {
-      console.info('ShareController show success.');
-    }).catch((error: BusinessError) => {
-      console.error(`ShareController show error. code: ${error?.code}, message: ${error?.message}`);
-    });
-  }
-
   private async getHostUser(): Promise<UserDataAndId> {
     return await DatabaseManager.getInstance().getUserByPosition(1, true) as UserDataAndId
-  }
-
-  private playStaggeredEntrance(delay: number, callback: () => void) {
-    animateTo({
-      duration: 500,
-      curve: curves.springMotion(0.6, 0.9),
-      delay: delay
-    }, callback)
-  }
-
-  private async showLogoutDialog() {
-    AlertDialog.show({
-      title: '退出登录',
-      message: `确认退出登录吗？\n`,
-      primaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      secondaryButton: {
-        value: '退出',
-        action: async () => {
-          const dbManager = DatabaseManager.getInstance()
-          try {
-            await dbManager.clearHostUserTable()
-          } catch (error) {
-            hilog.error(DOMAIN, TAG, `Failed to clear host user: ${error.message}`);
-          }
-          this.hostName = $r('app.string.defaultUname')
-          this.hostPhone = $r('app.string.defaultPhone')
-          this.uiContext.getRouter().replaceUrl({ url: 'pages/LoginPage' });
-        }
-      }
-    })
   }
 
   private showSearchPage(): void {
@@ -847,7 +856,7 @@ struct UI {
     this.getUIContext().animateTo({
       curve: curves.interpolatingSpring(0, 1, 342, 38)
     }, () => {
-      this.pathInfos.pushPath({ name: 'SearchCoursePage' }, false);
+      this.pageInfos.pushPath({ name: 'SearchCoursePage' }, false);
     })
   }
 }

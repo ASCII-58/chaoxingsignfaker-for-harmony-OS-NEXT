@@ -5,7 +5,6 @@ import { DatabaseManager } from '../utils/DataBase';
 import { loginFunction } from '../utils/Login';
 import { ChaoxingUtils } from '../utils/utils';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { ImageKnife } from '@ohos/imageknife';
 
 const DOMAIN = 0x0000;
 const TAG = 'DB_INIT';
@@ -38,55 +37,31 @@ export default class EntryAbility extends UIAbility {
       await this.waitForDatabaseInit();
 
       const dbManager = DatabaseManager.getInstance()
-      const isHostLogin: boolean = !(await dbManager.isHostUserTableEmpty())
 
-      if (isHostLogin) {
-        const user = await dbManager.getUserByPosition(1,true)
-        const username = user?.phone
-        const pwd = user?.pwd
-        const loginBody = ChaoxingUtils.getLoginBody(ChaoxingUtils.encryptByAES(username), pwd)
-        const cookies = await loginFunction.LoginChaoXing(loginBody)
-        if (cookies) {
-          // Update host user cookies
-          dbManager.updateUser(1, { 'cookies': cookies }, true)
-
-          // Load main page immediately without waiting for other users to login
-          windowStage.loadContent('pages/Index', (err) => {
-            if (err) {
-              const error = err as BusinessError;
-              hilog.error(DOMAIN, 'testTag', 'Failed to load main page: Code=%{public}d, Message=%{public}s', error.code, error.message);
-              return;
-            }
-            hilog.info(DOMAIN, 'testTag', '%{public}s', 'Succeeded in loading the main content.');
-          });
-
-          // Refresh other users' cookies in background (non-blocking)
-          this.refreshOtherUsersCookiesAsync(dbManager);
-        } else {
-          windowStage.loadContent('pages/LoginPage', (err) => {
-            if (err) {
-              const error = err as BusinessError;
-              hilog.error(DOMAIN, 'testTag', 'Failed to load main page: Code=%{public}d, Message=%{public}s', error.code, error.message);
-              return;
-            }
-            hilog.info(DOMAIN, 'testTag', '%{public}s', 'Succeeded in loading the main content.');
-          })
-          AlertDialog.show({ message: '登录过期，请重新登录' })
-        }
-
-      } else {
-        // Main window is created, set main page for this ability
-        hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
-
-        windowStage.loadContent('pages/LoginPage', (err) => {
-          if (err) {
-            const error = err as BusinessError;
-            hilog.error(DOMAIN, 'testTag', 'Failed to load main page: Code=%{public}d, Message=%{public}s', error.code, error.message);
-            return;
-          }
-          hilog.info(DOMAIN, 'testTag', '%{public}s', 'Succeeded in loading the main content.');
-        });
+      const user = await dbManager.getUserByPosition(1, true)
+      const username = user?.phone
+      const pwd = user?.pwd
+      const loginBody = ChaoxingUtils.getLoginBody(ChaoxingUtils.encryptByAES(username), pwd)
+      const cookies = await loginFunction.LoginChaoXing(loginBody)
+      if (cookies) {
+        // Update host user cookies
+        dbManager.updateUser(1, { 'cookies': cookies }, true)
       }
+      // Load main page immediately without waiting for other users to login
+      windowStage.loadContent('pages/initPage', (err) => {
+        if (err) {
+          const error = err as BusinessError;
+          hilog.error(DOMAIN, 'testTag', 'Failed to load main page: Code=%{public}d, Message=%{public}s', error.code,
+            error.message);
+          return;
+        }
+        hilog.info(DOMAIN, 'testTag', '%{public}s', 'Succeeded in loading the main content.');
+      });
+
+      // Refresh other users' cookies in background (non-blocking)
+      this.refreshOtherUsersCookiesAsync(dbManager);
+
+
     } catch (error) {
       const err = error as BusinessError;
       hilog.error(DOMAIN, TAG, 'Window stage creation error: Code=%{public}d, Message=%{public}s',
