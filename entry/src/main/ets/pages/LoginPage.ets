@@ -75,7 +75,7 @@ export default struct Login {
   @State isLoading: boolean = false
   @State shakeTranslateY: number = 0
   @State shakeScale: number = 1
-  private pageInfos: NavPathStack = new NavPathStack();
+  @Consume('pathInfos') pageInfos: NavPathStack;
   aboutToAppear() {
     // 标题入口动画
     animateTo({ duration: 600, curve: curves.springMotion(0.6, 0.8), delay: 100 }, () => {
@@ -192,7 +192,7 @@ export default struct Login {
             Button() {
               Row() {
                 if (this.isLoading) {
-                  LoadingProgress().width(24).height(24).color(Color.White).margin({ right: 10 })
+                  LoadingProgress().width(24).height(24).color($r('app.color.text_on_primary')).margin({ right: 10 })
                   Text('登录中...').fontColor($r('sys.color.ohos_id_color_text_primary_activated')).fontSize(18)
                     .fontWeight(FontWeight.Medium)
                 } else {

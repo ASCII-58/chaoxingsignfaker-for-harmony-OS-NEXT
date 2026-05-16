@@ -27,6 +27,25 @@ interface UpdateUserData {
   cookies?: string;
 }
 
+interface ExportUserEntry {
+  phone: string;
+  pwd: string;
+  cookies: string;
+  uid: number;
+}
+
+interface ExportData {
+  version: number;
+  exportedAt: string;
+  HostUser: ExportUserEntry[];
+  OtherUser: ExportUserEntry[];
+}
+
+interface ImportResult {
+  success: boolean;
+  message: string;
+}
+
 class DatabaseManager {
   private static instance: DatabaseManager | null = null;
   private rdbStore: relationalStore.RdbStore | null = null;
@@ -514,6 +533,130 @@ class DatabaseManager {
       }
     } catch (err) {
       throw this.normalizeError(err, '清空HostUser表操作异常');
+    }
+  }
+
+  /**
+   * 导出数据库为JSON字符串
+   * @returns JSON格式的数据库内容
+   */
+  public async exportToJSON(): Promise<string> {
+    if (!this.rdbStore) {
+      throw new Error('Database not initialized. Call init() first.');
+    }
+
+    const hostUsers = await this.getAllUsers(true);
+    const otherUsers = await this.getAllUsers(false);
+
+    const exportData: ExportData = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      HostUser: hostUsers.map((u: UserDataAndId): ExportUserEntry => ({
+        phone: u.phone,
+        pwd: u.pwd,
+        cookies: u.cookies,
+        uid: u.uid
+      })),
+      OtherUser: otherUsers.map((u: UserDataAndId): ExportUserEntry => ({
+        phone: u.phone,
+        pwd: u.pwd,
+        cookies: u.cookies,
+        uid: u.uid
+      }))
+    };
+
+    return JSON.stringify(exportData, null, 2);
+  }
+
+  /**
+   * 从JSON字符串导入数据库
+   * @param json JSON格式的数据库内容
+   * @returns 导入结果
+   */
+  public async importFromJSON(json: string): Promise<ImportResult> {
+    if (!this.rdbStore) {
+      throw new Error('Database not initialized. Call init() first.');
+    }
+
+    let data: ExportData;
+
+    try {
+      data = JSON.parse(json) as ExportData;
+    } catch {
+      const result: ImportResult = { success: false, message: '文件格式错误：无法解析JSON' };
+      return result;
+    }
+
+    if (typeof data.version !== 'number') {
+      const result: ImportResult = { success: false, message: '文件格式错误：缺少版本号' };
+      return result;
+    }
+    if (!Array.isArray(data.HostUser) || !Array.isArray(data.OtherUser)) {
+      const result: ImportResult = { success: false, message: '文件格式错误：缺少用户数据' };
+      return result;
+    }
+
+    const validateUserEntry = (entry: ExportUserEntry, tableName: string): ImportResult | null => {
+      if (typeof entry.phone !== 'string' || entry.phone.trim().length === 0) {
+        const result: ImportResult = { success: false, message: `${tableName} 中存在缺少手机号的记录` };
+        return result;
+      }
+      if (typeof entry.pwd !== 'string' || entry.pwd.trim().length === 0) {
+        const result: ImportResult = { success: false, message: `${tableName} 中存在缺少密码的记录` };
+        return result;
+      }
+      if (typeof entry.cookies !== 'string' || entry.cookies.trim().length === 0) {
+        const result: ImportResult = { success: false, message: `${tableName} 中存在缺少cookies的记录` };
+        return result;
+      }
+      if (typeof entry.uid !== 'number' || entry.uid <= 0 || !Number.isInteger(entry.uid)) {
+        const result: ImportResult = { success: false, message: `${tableName} 中存在无效uid的记录` };
+        return result;
+      }
+      return null;
+    };
+
+    for (const entry of data.HostUser) {
+      const err = validateUserEntry(entry, 'HostUser');
+      if (err) {
+        return err;
+      }
+    }
+    for (const entry of data.OtherUser) {
+      const err = validateUserEntry(entry, 'OtherUser');
+      if (err) {
+        return err;
+      }
+    }
+
+    try {
+      this.rdbStore.beginTransaction();
+
+      await this.rdbStore.executeSql('DELETE FROM OtherUser');
+      await this.rdbStore.executeSql('DELETE FROM HostUser');
+      await this.rdbStore.executeSql('DELETE FROM sqlite_sequence WHERE name = "HostUser"');
+      await this.rdbStore.executeSql('DELETE FROM sqlite_sequence WHERE name = "OtherUser"');
+
+      for (const entry of data.HostUser) {
+        await this.rdbStore.executeSql(
+          'INSERT INTO HostUser (phone, pwd, cookies, uid) VALUES (?, ?, ?, ?)',
+          [entry.phone, entry.pwd, entry.cookies, entry.uid]
+        );
+      }
+      for (const entry of data.OtherUser) {
+        await this.rdbStore.executeSql(
+          'INSERT INTO OtherUser (phone, pwd, cookies, uid) VALUES (?, ?, ?, ?)',
+          [entry.phone, entry.pwd, entry.cookies, entry.uid]
+        );
+      }
+
+      this.rdbStore.commit();
+      const result: ImportResult = { success: true, message: `导入成功：${data.HostUser.length} 个主用户，${data.OtherUser.length} 个其他用户` };
+      return result;
+    } catch (err) {
+      this.rdbStore.rollBack();
+      const result: ImportResult = { success: false, message: `导入失败：${(err as Error).message}` };
+      return result;
     }
   }
 

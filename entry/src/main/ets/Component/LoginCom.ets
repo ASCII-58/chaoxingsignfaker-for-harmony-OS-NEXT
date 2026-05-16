@@ -159,7 +159,7 @@ export struct loginByCommon {
         Button() {
           Row() {
             if (this.isLoading) {
-              LoadingProgress().width(20).height(20).color(Color.White).margin({ right: 10 })
+              LoadingProgress().width(20).height(20).color($r('app.color.text_on_primary')).margin({ right: 10 })
               Text('登录中...').fontColor($r('sys.color.ohos_id_color_text_primary_activated')).fontSize(18)
                 .fontWeight(FontWeight.Medium)
             } else {
@@ -305,7 +305,7 @@ export struct loginByURL {
         Button() {
           Row() {
             if (this.isLoading) {
-              LoadingProgress().width(20).height(20).color(Color.White).margin({ right: 10 })
+              LoadingProgress().width(20).height(20).color($r('app.color.text_on_primary')).margin({ right: 10 })
               Text('登录中...').fontColor($r('sys.color.ohos_id_color_text_primary_activated')).fontSize(18)
                 .fontWeight(FontWeight.Medium)
             } else {

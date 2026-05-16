@@ -29,20 +29,22 @@ export enum SignType {
 @Component
 struct signIcon {
   @Prop signType: string;
+  @Prop isEnded: boolean = false;
   @State icon: ResourceStr = $r('app.media.foreground')
   @State isLoaded: boolean = false
 
-  // 位置签到、二维码签到、手势签到、普通签到、签到码签到
   build() {
-    Row() { // "0"=普通签到, "2"=二维码签到, "3"=手势签到, "4"=位置签到, "5"=签到码签到
+    Row() {
       Image(this.icon)
-        .width(50)
-        .height(50)
-        .borderColor($r('app.color.class_icon_border'))
-        .borderWidth(3)
-        .borderRadius(10)
+        .width(44)
+        .height(44)
+        .fillColor(this.isEnded ? $r('app.color.secondary_text') : $r('app.color.icon'))
+        .borderColor(this.isEnded ? $r('sys.color.comp_divider') : $r('app.color.class_icon_border'))
+        .borderWidth(2)
+        .borderRadius(12)
         .margin(10)
-        .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
+        .backgroundColor($r('app.color.card_background'))
+        .opacity(this.isEnded ? 0.5 : 1)
         .onAppear(() => {
           if (this.signType === '0') {
             this.icon = $r('app.media.hand_tap')
@@ -84,48 +86,56 @@ export struct ActivityListPage {
   build() {
     NavDestination() {
       if (this.ActivityList) {
-        List({ space: 12, initialIndex: 0 }) {
+        List({ space: 0, initialIndex: 0 }) {
           ForEach(this.ActivityList, (Activity: ActivityItem, index: number) => {
             if (!(Activity.type != 2 && Activity.type != 74)) {
               ListItem() {
                 Row() {
-                  signIcon({ signType: Activity.otherId.toString() })
-                  if (1) {
-                    Column() {
-                      Text(Activity.nameOne).fontSize(20).fontWeight(FontWeight.Medium)
-                      if (typeof Activity.endTime === 'string') {
-                        Text(ChaoxingUtils.isSignActivityStarted(Activity.startTime) ? '无截止日期' :
-                          `${ChaoxingUtils.getRemainingTime(Activity.startTime) / 60000 << 0}分钟开始签到`)
-                          .fontSize(12)
-                          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-                      } else {
-                        Text(ChaoxingUtils.isSignActivityActive(Activity.startTime, Activity.endTime) ?
-                          (`${ChaoxingUtils.getRemainingTime(Activity.endTime) / 60000 << 0}分钟后结束`) :
-                          (ChaoxingUtils.isSignActivityEnded(Activity.endTime) ? '已结束' :
-                            `${ChaoxingUtils.getRemainingTime(Activity.startTime) / 60000 << 0}分钟后开始签到`))
-                          .fontSize(12)
-                          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-                      }
-                    }.width(100)
+                  signIcon({ signType: Activity.otherId.toString(),
+                    isEnded: this.isActivityEnded(Activity) })
+                  Column() {
+                    Text(Activity.nameOne)
+                      .fontSize(16)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor(this.isActivityEnded(Activity)
+                        ? $r('app.color.secondary_text')
+                        : $r('app.color.primary_text'))
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    Text(this.getStatusText(Activity))
+                      .fontSize(13)
+                      .fontColor(this.getStatusColor(Activity))
                   }
-                }.width('100%')
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  .margin({ left: 12 })
+
+                  Image($r('sys.media.ohos_ic_public_arrow_right'))
+                    .width(14)
+                    .height(14)
+                    .fillColor($r('app.color.secondary_text'))
+                    .opacity(this.isActivityEnded(Activity) ? 0.4 : 1)
+                }
+                .width('100%')
+                .height(68)
+                .backgroundColor($r('app.color.card_background'))
+                .padding({ left: 16, right: 16 })
+                .border({
+                  width: { left: this.isActivityEnded(Activity) ? 0 : 3 },
+                  color: { left: this.isActivityEnded(Activity)
+                    ? 'transparent'
+                    : (this.isActivityActive(Activity)
+                      ? $r('app.color.signed')
+                      : $r('app.color.selected')) }
+                })
+                .animation({ duration: 150, curve: Curve.EaseInOut })
               }
               .width('100%')
-              .backgroundColor(typeof Activity.endTime === 'string' ?
-                (ChaoxingUtils.isSignActivityStarted(Activity.startTime) ? $r('app.color.class_button') :
-                  $r('app.color.class_button_disabled')) :
-                (ChaoxingUtils.isSignActivityActive(Activity.startTime, Activity.endTime) ?
-                  $r('app.color.class_button') :
-                  $r('app.color.class_button_disabled')))
-              .height(70)
-              .borderRadius(20)
-              .shadow({
-                radius: 8,
-                color: '#00000015',
-                offsetX: 0,
-                offsetY: 2
-              })
               .onClick(() => {
+                if (this.isActivityEnded(Activity)) {
+                  promptAction.showToast({ message: '该签到已结束' })
+                  return
+                }
                 if (typeof Activity.endTime === 'number') {
                   if (!ChaoxingUtils.isSignActivityActive(Activity.startTime, Activity.endTime) ||
                     !ChaoxingUtils.isSignActivityStarted(Activity.startTime)) {
@@ -139,20 +149,21 @@ export struct ActivityListPage {
                   ClassId: this.classId,
                   signType: Activity.otherId.toString() as SignType
                 }
-                // 所有签到类型都跳转到SignerPage
                 this.pathInfos.pushPath({ name: 'SignerPage', param: activityInfo })
               })
             }
           }, (Activity: ActivityItem) => Activity.id)
-        }.expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        }
+        .divider({ strokeWidth: 0.5, color: $r('sys.color.comp_divider'), startMargin: 72, endMargin: 16 })
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .height('100%')
       }
     }
     .height('100%')
     .width('100%')
+    .backgroundColor($r('app.color.page_background'))
     .title(`${this.name}`)
     .onReady((ctx: NavDestinationContext) => {
-      // NavDestinationContext获取当前所在的导航控制器
       this.pathInfos = ctx.pathStack;
     })
     .onAppear(async () => {
@@ -189,5 +200,42 @@ export struct ActivityListPage {
       }
     })
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+  }
+
+  private getStatusText(Activity: ActivityItem): string {
+    if (typeof Activity.endTime === 'string') {
+      return ChaoxingUtils.isSignActivityStarted(Activity.startTime) ? '无截止日期' :
+        `${ChaoxingUtils.getRemainingTime(Activity.startTime) / 60000 << 0}分钟开始签到`
+    } else {
+      if (ChaoxingUtils.isSignActivityEnded(Activity.endTime)) {
+        return '已结束'
+      } else if (ChaoxingUtils.isSignActivityActive(Activity.startTime, Activity.endTime)) {
+        return `进行中 · ${ChaoxingUtils.getRemainingTime(Activity.endTime) / 60000 << 0}分钟后结束`
+      } else {
+        return `${ChaoxingUtils.getRemainingTime(Activity.startTime) / 60000 << 0}分钟后开始签到`
+      }
+    }
+  }
+
+  private getStatusColor(Activity: ActivityItem): Resource {
+    if (typeof Activity.endTime === 'string') {
+      return $r('app.color.secondary_text')
+    }
+    if (ChaoxingUtils.isSignActivityEnded(Activity.endTime)) {
+      return $r('app.color.unsignable')
+    } else if (ChaoxingUtils.isSignActivityActive(Activity.startTime, Activity.endTime)) {
+      return $r('app.color.signed')
+    } else {
+      return $r('app.color.selected')
+    }
+  }
+
+  private isActivityEnded(Activity: ActivityItem): boolean {
+    return typeof Activity.endTime === 'number' && ChaoxingUtils.isSignActivityEnded(Activity.endTime)
+  }
+
+  private isActivityActive(Activity: ActivityItem): boolean {
+    return typeof Activity.endTime === 'number' &&
+    ChaoxingUtils.isSignActivityActive(Activity.startTime, Activity.endTime)
   }
 }

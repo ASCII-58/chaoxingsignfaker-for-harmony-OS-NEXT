@@ -172,7 +172,7 @@ export struct PasswordSignComponent {
           // 提交按钮
           Button(this.isLoading ? '签到中...' : '提交签到')
             .width(200)
-            .fontColor(Color.White)
+            .fontColor($r('app.color.text_on_primary'))
             .visualEffect(new hdsEffect.HdsEffectBuilder()
               .pointLight({
                 sourceType: this.submitBtnLight,
@@ -211,7 +211,7 @@ export struct PasswordSignComponent {
               
               Button('签退')
                 .width(150)
-                .fontColor(Color.White)
+                .fontColor($r('app.color.text_on_primary'))
                 .visualEffect(new hdsEffect.HdsEffectBuilder()
                   .pointLight({
                     sourceType: this.signoutBtnLight,

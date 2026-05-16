@@ -193,7 +193,7 @@ export struct GestureSignComponent {
           Row() {
             Button('重置')
               .width(100)
-              .fontColor(Color.White)
+              .fontColor($r('app.color.text_on_primary'))
               .visualEffect(new hdsEffect.HdsEffectBuilder()
                 .pointLight({
                   sourceType: this.resetBtnLight,
@@ -219,7 +219,7 @@ export struct GestureSignComponent {
 
             Button('提交')
               .width(100)
-              .fontColor(Color.White)
+              .fontColor($r('app.color.text_on_primary'))
               .visualEffect(new hdsEffect.HdsEffectBuilder()
                 .pointLight({
                   sourceType: this.submitBtnLight,
@@ -249,7 +249,7 @@ export struct GestureSignComponent {
               this.signInfo.signOutPublishTimeStamp > 0 && this.isSignSuccess) {
             Button('签退')
               .width(150)
-              .fontColor(Color.White)
+              .fontColor($r('app.color.text_on_primary'))
               .margin({ top: 20 })
               .visualEffect(new hdsEffect.HdsEffectBuilder()
                 .pointLight({

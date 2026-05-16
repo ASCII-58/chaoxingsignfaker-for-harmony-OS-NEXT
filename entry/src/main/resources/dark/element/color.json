@@ -2,54 +2,75 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#000000"
+      "value": "#0D1117"
     },
     {
       "name": "input_padding",
-      "value": "#999999"
+      "value": "#30363D"
+    },
+    {
+      "name": "page_background",
+      "value": "#0D1117"
+    },
+    {
+      "name": "card_background",
+      "value": "#161B22"
     },
     {
       "name": "header_background",
-      "value": "#112299"
+      "value": "#010409"
     },
     {
       "name": "class_button",
-      "value": "#3764FF"
+      "value": "#238636"
     },
     {
       "name": "class_button_disabled",
-      "value": "#5784cc"
+      "value": "#173E21"
     },
     {
       "name": "class_icon_border",
-      "value": "#112255"
-    },{
+      "value": "#30363D"
+    },
+    {
       "name": "tittle_text",
-      "value": "#ffffff"
+      "value": "#E6EDF3"
     },
     {
       "name": "dialog",
-      "value": "#222222"
+      "value": "#161B22"
     },
     {
       "name": "icon",
-      "value": "#bbbbbb"
+      "value": "#8B949E"
     },
     {
-      "name":"signed",
-      "value":"#4caf50"
+      "name": "primary_text",
+      "value": "#E6EDF3"
     },
     {
-      "name":"selected",
-      "value":"#4da6ff"
+      "name": "secondary_text",
+      "value": "#8B949E"
     },
     {
-      "name":"unsignable",
-      "value":"#FFFF2626"
+      "name": "text_on_primary",
+      "value": "#FFFFFF"
     },
     {
-      "name":"unselected",
-      "value":"#90a4ae"
+      "name": "signed",
+      "value": "#3FB950"
+    },
+    {
+      "name": "selected",
+      "value": "#58A6FF"
+    },
+    {
+      "name": "unsignable",
+      "value": "#DA3633"
+    },
+    {
+      "name": "unselected",
+      "value": "#484F58"
     }
   ]
 }
