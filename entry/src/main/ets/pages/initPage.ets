@@ -1,6 +1,6 @@
 import { DatabaseManager } from '../utils/DataBase';
 import { preferences } from '@kit.ArkData';
-import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import { common, ConfigurationConstant, Want } from '@kit.AbilityKit';
 
 const TAG = 'InitPage';
 const DOMAIN = 0x0001;
@@ -86,8 +86,19 @@ struct UI {
             await pref.flush();
             AlertDialog.show({
               title: '提示',
-              message: '建议前往华为开发者联盟完成实名认证，以获得2年调试时长（未认证仅14天）。\n\n路径：DevEco Studio → 设置 → 华为开发者 → 实名认证',
-              confirm: { value: '知道了', action: () => {} }
+              message: '建议前往华为开发者联盟完成实名认证，以获得2年调试时长（未认证仅14天）。\n\n实名认证文档：\nhttps://developer.huawei.com/consumer/cn/doc/start/itrna-0000001076878172',
+              primaryButton: {
+                value: '查看文档',
+                action: () => {
+                  let want: Want = {
+                    action: 'ohos.want.action.viewData',
+                    entities: ['entity.system.browsable'],
+                    uri: 'https://developer.huawei.com/consumer/cn/doc/start/itrna-0000001076878172'
+                  };
+                  context.startAbility(want).catch(() => {});
+                }
+              },
+              secondaryButton: { value: '知道了', action: () => {} }
             });
           }
         },

@@ -173,6 +173,20 @@ export struct SettingsComponent {
     });
   }
 
+  showChangelog() {
+    AlertDialog.show({
+      title: '更新日志 (2026-05-16)',
+      message: '新增功能：\n' +
+        '• 数据库导出/导入 — 设置页支持将用户数据导出为JSON文件并通过分享保存，支持导入并自动校验格式\n' +
+        '• 实名认证引导 — 首次启动询问是否已完成开发者实名认证，未认证/有效期将尽时弹出备份提醒\n' +
+        '• 使用时长显示 — 用户中心新增已使用时长\n' +
+        '• 二维码分享图片质量提升至100\n' +
+        '• 修复主用户登录后无法跳转首页的问题\n' +
+        '• 修复多个弹窗冲突导致设置页无法打开的问题',
+      confirm: { value: '知道了', action: () => {} }
+    });
+  }
+
   build() {
     Column() {
 
@@ -286,6 +300,22 @@ export struct SettingsComponent {
               }
               .width('100%').padding(12)
               .onClick(() => { this.importDatabase() })
+
+              Divider()
+                .color($r('sys.color.ohos_id_color_list_separator'))
+                .margin({ left: 12, right: 12 })
+
+              Row() {
+                Text('更新日志')
+                  .fontSize(16)
+                  .fontColor($r('sys.color.ohos_id_color_text_primary'))
+                Blank()
+                Image($r('app.media.arrow_right'))
+                  .width(16).height(16)
+                  .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
+              }
+              .width('100%').padding(12)
+              .onClick(() => { this.showChangelog() })
 
               Divider()
                 .color($r('sys.color.ohos_id_color_list_separator'))
