@@ -21,6 +21,11 @@
 
 - No CLI build/test commands exist — all operations through DevEco Studio
 - Build debug: DevEco → Build → Build Debug Hap
+  - **If build fails**: Check error log (bottom panel) for common issues:
+    - Missing dependencies → Re-open oh-package.json5 and sync
+    - Lint errors → Fix reported violations in code-linter.json5 rules
+    - SDK mismatch → Verify HarmonyOS SDK version in DevEco settings matches build-profile.json5
+    - Resource references → Ensure `$r('app.xxx')` (not `$r('sys.xxx')`)
 - Clean: DevEco → Build → Clean
 - Full rebuild: delete `entry/build` then rebuild
 - Tests: `@ohos/hypium` + `@ohos/hamock` (entry/src/test/ for local, entry/src/ohosTest/ for device). Run via DevEco test runner only.
@@ -49,21 +54,59 @@
 
 ### 1. Mandatory Skills (强制技能加载)
 
-- karpathy-guidelines
+- 必须加载 skill:karpathy-guidelines
 
 ### 2. Git Backup Rules (基于任务周期的自动备份机制)
 
 本模块旨在严格控制 AI 在整个会话（Session）周期内的版本保护行为。为了防止出现“单次会话仅备份一次”的代码惰性，或“高频调试导致过度备份”的失控情况，请严格按照以下**「任务周期状态机」**执行：
 
-- **任务周期的界定 (Task Boundary)**：用户提出的每一个独立需求（如：新增功能、重构组件、跨文件修复Bug等），均视为一个**「全新的任务周期」**。
-- **状态冻结：何时必须备份 (Pre-Task Backup)**：
-  - **触发条件**：在**每一个「新任务周期」开始时**，且在你实际写入/修改任何文件**之前**。
-  - **强制动作**：执行 `git stash push -m "AI-PreTask: <当前新任务的简短英文摘要>"` 保护当前稳定代码。
-  - **最高优先级豁免 (消除上下文惰性)**：即使你在本 Session 的历史对话中已经执行过备份，**只要识别到进入了新任务周期，此前的备份记录即刻失效，你必须为当前的新任务重新执行一次前置备份！** 历史备份绝不是跳过当前备份的理由。
-- **严格限制：何时禁止备份 (Intra-Task Restraint)**：
-  - **禁止动作 (NEVER)**：在**同一个任务周期内**的延续性动作（如连续打磨、反复调试、单文件微调、修复报错等过程中），**绝对禁止**执行任何 `git stash` 或 `git commit` 操作，严禁制造垃圾快照。
-- **灾难回退干预 (Disaster Recovery)**：
-  - 如果修改后代码彻底崩溃、严重报错或被用户要求撤销，你需要主动停止修改，并提示用户是否使用 `git stash pop` 恢复代码到当前任务开始前的稳定状态。
+1. **任务周期的界定 (Task Boundary)**：以下情况都视为一个**「全新的任务周期」**：
+   - 用户明确说 "新任务", "新需求", "另一个任务" 等词汇
+   - 需要修改 2 个或以上的文件
+   - 涉及跨文件重构或 Bug 修复
+   - 修改涉及项目结构或构建配置
+   - 用户切换功能模块或页面
+
+   反例（沿用当前周期）：单文件小修复、字符串变更、格式调整、同一请求的连续打磨
+
+2. **任务边界不清时的处理 (Ambiguous Boundaries)**：
+   - **冲突信号示例**：用户说 "修改登录页" 又说 "添加数据库迁移" → 两个独立模块
+   - **判断依据**：检查修改范围、涉及文件数、是否影响多个模块
+   - **处理步骤**：向用户澄清以下内容后再继续：
+     1. 这个任务涉及哪些文件或模块？
+     2. 是独立任务还是前一个任务的延续？
+     3. 完成后是否需要新的测试周期？
+3. **状态冻结：何时必须备份 (Pre-Task Backup)**：
+   在每一个新任务周期开始时，且在你实际写入或修改任何文件之前，执行备份：
+
+   ```
+   git stash push -m "AI-PreTask: <当前新任务的简短英文摘要>"
+   ```
+
+   示例：`git stash push -m "AI-PreTask: Add-error-handling-to-login-flow"`
+
+4. **备份失败时的处理 (Backup Failure)**：
+   如果 `git stash push` 或 `git stash pop` 失败：
+   - 立即停止修改
+   - 向用户说明失败原因（例："未初始化的 git 仓库" 或 "冲突的文件变更"）
+   - 提供完整错误信息
+   - 建议用户手动处理或提供替代方案
+
+5. **严格限制：何时禁止备份 (Intra-Task Restraint)**：
+   在同一个任务周期内的延续性动作中，绝对禁止执行 `git stash` 或 `git commit`：
+   - 连续打磨和反复调试
+   - 单文件微调或格式修复
+   - 修复先前步骤产生的报错
+
+   原因：防止制造垃圾快照导致版本历史混乱
+
+6. **灾难回退干预 (Disaster Recovery)**：
+   如果代码修改导致以下情况，主动停止并提示回退：
+   - 修改后代码彻底崩溃或语法错误
+   - 应用无法成功构建或运行
+   - 用户明确要求撤销修改
+
+   恢复步骤：提示用户执行 `git stash pop` 恢复到任务开始前的稳定状态
 
 ### 3. Resource Reference Rules (资源引用规则)
 
@@ -75,3 +118,20 @@
 - **浮点数** → `$r('app.float.xxx')` → `resources/base/element/float.json`
 
 涉及新资源时，需要同步添加浅色模式 (`base/element/`) 和深色模式 (`dark/element/`) 两套配置，确保适配系统主题切换。
+
+**处理不完整或冲突的资源引用 (Handling Incomplete/Contradictory References)**：
+
+- **不完整引用** (如 `$r('app.color.')`，缺少资源名)：
+  1. 提示用户查看 `resources/base/element/color.json` 确认资源名
+  2. 或提供项目中常用资源的列表作为建议
+  3. 使用安全的后备值（如默认颜色 `#000000`）
+
+- **冲突引用** (如某处用 `$r('app.color.primary')` 定义按钮颜色，另处用 `#FF0000` 定义相同目的的按钮)：
+  1. 识别冲突点并向用户说明不一致
+  2. 建议统一使用资源引用方案
+  3. 如必须修改，确保深色/浅色模式都同步更新
+
+- **缺失资源** (代码引用但 JSON 文件中不存在)：
+  1. 自动添加到相应的资源 JSON 文件
+  2. 同时更新深色模式配置
+  3. 通知用户已添加新资源及其默认值
