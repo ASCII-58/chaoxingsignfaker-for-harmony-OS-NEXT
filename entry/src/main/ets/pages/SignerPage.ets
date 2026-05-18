@@ -1,5 +1,5 @@
 import { ActivityInfo, SignType } from './ActivityListPage';
-import { Sign } from '../utils/sign';
+import { Sign, CommonSignParams, UserQueryObject } from '../utils/sign';
 import { JSON } from '@kit.ArkTS';
 import { FunctionalButton, functionalButtonComponentManager } from '@kit.ScenarioFusionKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -11,7 +11,7 @@ import request from '@ohos.request';
 import { ChaoxingUtils } from '../utils/utils';
 import { picker } from '@kit.CoreFileKit';
 import { Context } from '@kit.AbilityKit';
-import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { promptAction } from '@kit.ArkUI';
 import { GestureSignComponent } from '../Component/GestureSignComponent';
 import { PasswordSignComponent } from '../Component/PasswordSignComponent';
@@ -192,31 +192,31 @@ struct photoPicker {
           Text('选择图片 / 拍照').fontColor($r('sys.color.ohos_id_color_text_primary_activated'))
         }
       }
-        .type(ButtonType.Capsule)
-          .backgroundColor($r('sys.color.ohos_id_color_button_normal'))
-        .width('60%')
-        .margin({ top: 12 })
-        .enabled(!this.isUploading)
-          .visualEffect(new hdsEffect.HdsEffectBuilder()
-            .pointLight({
-              sourceType: this.photoBtnLight,
-              illuminatedType: hdsEffect.PointLightIlluminatedType.BORDER
-            })
-            .buildEffect())
-          .onTouch((event: TouchEvent) => {
-            if (event.type === TouchType.Down) {
-              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
-                this.photoBtnLight = hdsEffect.PointLightSourceType.BRIGHT;
-              })
-            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
-                this.photoBtnLight = hdsEffect.PointLightSourceType.NONE;
-              })
-            }
-          })
-        .onClick(async () => {
-          this.showPhotoConfirmDialog()
+      .type(ButtonType.Capsule)
+      .backgroundColor($r('sys.color.ohos_id_color_button_normal'))
+      .width('60%')
+      .margin({ top: 12 })
+      .enabled(!this.isUploading)
+      .visualEffect(new hdsEffect.HdsEffectBuilder()
+        .pointLight({
+          sourceType: this.photoBtnLight,
+          illuminatedType: hdsEffect.PointLightIlluminatedType.BORDER
         })
+        .buildEffect())
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down) {
+          animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
+            this.photoBtnLight = hdsEffect.PointLightSourceType.BRIGHT;
+          })
+        } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+          animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
+            this.photoBtnLight = hdsEffect.PointLightSourceType.NONE;
+          })
+        }
+      })
+      .onClick(async () => {
+        this.showPhotoConfirmDialog()
+      })
     }
     .width('100%')
     .padding(16)
@@ -263,7 +263,7 @@ struct photoPicker {
 
   // 抽离图片处理逻辑，保持 build 干净
   private async handlePhotoSelect() {
-    this.objectidArray = []
+    this.objectidArray = new Array(this.signIdArray.length).fill('')
     this.uploadCompletedCount = 0
     this.uploadStatus = '正在准备上传...'
     this.isUploading = true
@@ -279,7 +279,7 @@ struct photoPicker {
             info.cookies = ((await dbManager.getUserByPosition(1, true)) as UserDataAndId).cookies
           } else {
             // 其他用户
-            info.cookies = ((await dbManager.getUserByPosition(userId)) as UserDataAndId).cookies
+            info.cookies = ((await dbManager.getUserByPosition(userId, false)) as UserDataAndId).cookies
           }
 
           info.PUID = (await loginFunction.getUserInfo(info.cookies)).puid
@@ -328,7 +328,7 @@ struct photoPicker {
         } catch (error) {
           hilog.error(DOMAIN, TAG, 'File processing failed', JSON.stringify(error))
           promptAction.showToast({ message: `图片 ${index + 1} 处理失败`, duration: 2000 })
-          this.uploadCompletedCount++
+          this.onUploadFinished()
         }
       }
     } catch (error) {
@@ -346,35 +346,11 @@ struct photoPicker {
       task.on("fail", (event) => {
         hilog.error(DOMAIN, TAG, `Upload failed for index ${signIndex}`, JSON.stringify(event))
         promptAction.showToast({ message: `图片 ${signIndex + 1} 上传失败`, duration: 2000 })
-
-        // 更新完成计数
-        this.uploadCompletedCount++
-        const uploadedCount = this.objectidArray.filter(id => id).length
-        this.uploadStatus = `上传失败 (${uploadedCount}/${this.uploadTotalCount})`
-
-        // 检查是否所有上传都已完成
-        if (this.uploadCompletedCount >= this.uploadTotalCount) {
-          this.isUploading = false
-          if (uploadedCount === 0) {
-            this.uploadStatus = '所有图片上传失败'
-          }
-        }
+        this.onUploadFinished()
       })
 
       task.on('complete', () => {
-        // 更新完成计数
-        this.uploadCompletedCount++
-        const uploadedCount = this.objectidArray.filter(id => id).length
-        this.uploadStatus = `已上传 ${uploadedCount}/${this.uploadTotalCount}`
-
-        // 检查是否所有上传都已完成
-        if (this.uploadCompletedCount >= this.uploadTotalCount) {
-          this.isUploading = false
-          if (uploadedCount === this.uploadTotalCount) {
-            this.uploadStatus = '所有图片上传完成 ✓'
-            promptAction.showToast({ message: '所有图片上传成功', duration: 2000 })
-          }
-        }
+        this.onUploadFinished()
       })
 
       task.on('headerReceive', (value) => {
@@ -382,11 +358,6 @@ struct photoPicker {
           try {
             const bodyObj = JSON.parse(value['body']) as object
             this.objectidArray[signIndex] = bodyObj['objectId'] as string
-
-            // 更新上传状态
-            const uploadedCount = this.objectidArray.filter(id => id).length
-            this.uploadStatus = `已上传 ${uploadedCount}/${this.uploadTotalCount}`
-
             console.info(`Photo ${signIndex + 1} uploaded successfully`)
           } catch (e) {
             hilog.error(DOMAIN, TAG, 'Failed to parse upload response', e)
@@ -396,16 +367,26 @@ struct photoPicker {
     } catch (e) {
       hilog.error(DOMAIN, TAG, "Upload task creation failed", e)
       promptAction.showToast({ message: `图片 ${signIndex + 1} 上传失败`, duration: 2000 })
+      this.onUploadFinished()
+    }
+  }
 
-      // 更新完成计数
-      this.uploadCompletedCount++
+  private onUploadFinished() {
+    this.uploadCompletedCount++
+    if (this.uploadCompletedCount >= this.uploadTotalCount) {
+      this.isUploading = false
       const uploadedCount = this.objectidArray.filter(id => id).length
-      this.uploadStatus = `上传失败 (${uploadedCount}/${this.uploadTotalCount})`
-
-      // 检查是否所有上传都已完成
-      if (this.uploadCompletedCount >= this.uploadTotalCount) {
-        this.isUploading = false
+      if (uploadedCount === this.uploadTotalCount) {
+        this.uploadStatus = '所有图片上传完成 ✓'
+        promptAction.showToast({ message: '所有图片上传成功', duration: 2000 })
+      } else if (uploadedCount === 0) {
+        this.uploadStatus = '所有图片上传失败'
+      } else {
+        this.uploadStatus = `已上传 ${uploadedCount}/${this.uploadTotalCount}`
       }
+    } else {
+      const uploadedCount = this.objectidArray.filter(id => id).length
+      this.uploadStatus = `已上传 ${uploadedCount}/${this.uploadTotalCount}`
     }
   }
 }
@@ -414,7 +395,6 @@ struct photoPicker {
 @Component
 struct QRCodeLocation {
   @Prop ActivityId: string;
-  @Link queryParams: object
   @State DestinationLocationName: string = '获取中...'
   @State Position: object = JSON.parse('{"result":1,"mockData":"{\\"strategy\\":0,\\"probability\\":-1}"}') as object
 
@@ -442,7 +422,7 @@ struct QRCodeLocation {
       .border({ width: 1, color: $r('sys.color.comp_divider') })
       .onClick(() => {
         if (this.DestinationLocationName !== '获取中...' && this.DestinationLocationName !== '该签到无要求位置') {
-          this.copyText(this.DestinationLocationName)
+          ChaoxingUtils.copyText(this.DestinationLocationName)
         }
       })
 
@@ -494,7 +474,6 @@ struct QRCodeLocation {
               this.Position['address'] = data.name as string;
               this.Position['longitude'] = LoginLocation.lon as number;
               this.Position['latitude'] = LoginLocation.lat as number;
-              this.queryParams['location'] = JSON.stringify(this.Position)
             })
         }).enabled(this.DestinationLocationName !== '获取中...' && this.DestinationLocationName !== '该签到无要求位置')
       }
@@ -503,15 +482,21 @@ struct QRCodeLocation {
     }
     .padding(16)
     .width('100%')
+    .onAppear(async () => {
+      try {
+        const dbManager = DatabaseManager.getInstance()
+        const currentUser = await dbManager.getUserByPosition(1, true) as UserDataAndId
+        if (currentUser && this.ActivityId) {
+          const locInfo = await Sign.GetLocationSignInfo(currentUser.cookies, this.ActivityId)
+          const locName = locInfo['locationText'] as string
+          this.DestinationLocationName = locName ? locName : '该签到无要求位置'
+        }
+      } catch (e) {
+        this.DestinationLocationName = '位置信息获取失败'
+      }
+    })
   }
 
-  // 1. 逻辑方法：复制文本
-  private copyText(text: string) {
-    const pasteboardData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text)
-    const systemPasteboard = pasteboard.getSystemPasteboard()
-    systemPasteboard.setData(pasteboardData)
-    promptAction.showToast({ message: '已复制到剪贴板', duration: 1500 })
-  }
 }
 
 // ---------------------------------------------------------------
@@ -532,7 +517,18 @@ export struct SignPage {
   // State Definitions
   @State canSign: boolean = true;
   @State activityInfo: null | ActivityInfo = null
-  @State queryParams: object = JSON.parse('{}') as object
+  @State commonQueryParams: CommonSignParams = {
+    activeId: '',
+    latitude: '',
+    longitude: '',
+    address: '',
+    enc: ''
+  }
+  @State userQueryParams: UserQueryObject = {
+    uid: '',
+    fid: '',
+    name: ''
+  }
   @State otherUser: Array<userMenu> = []
   @State signIdArray: Array<number> = []
   @State ifPhoto: boolean = false
@@ -540,9 +536,7 @@ export struct SignPage {
   @State objectidArr: string[] = []
   @State DestinationLocationName: string = '获取中...' // 初始状态
   @State hostUser: HostUserInfo | null = null
-  @State shineTranslateSign: string = '-100%'
   @State signBtnLight: hdsEffect.PointLightSourceType = hdsEffect.PointLightSourceType.NONE;
-  pathInfos: NavPathStack = new NavPathStack();
 
   // 4. UI Builders
   @Builder
@@ -553,7 +547,7 @@ export struct SignPage {
           userItem({ user, signIdArray: this.signIdArray })
         }
         .onClick(() => {
-          if (user.SignPermission===-1) {
+          if (user.SignPermission === -1) {
             promptAction.showToast({ message: '该用户不在班级', duration: 1500 })
             return
           }
@@ -605,24 +599,27 @@ export struct SignPage {
           .padding({ top: 8, bottom: 4 })
       } else {
         Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap }) {
-          ForEach(this.signIdArray, (userId: number) => {
-            ForEach(this.otherUser.filter(u => u.id === userId), (user: userMenu) => {
-              Row() {
-                Text(user.uname)
-                  .fontSize(13)
-                  .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                Image($r('sys.media.ohos_ic_public_close'))
-                  .width(14).height(14)
-                  .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
-                  .margin({ left: 4 })
-              }
-              .padding({ left: 10, right: 10, top: 5, bottom: 5 })
-              .backgroundColor($r('sys.color.ohos_id_color_emphasize', 0.1))
-              .borderRadius(14)
-              .margin({ right: 8, bottom: 6 })
-              .onClick(() => {
-                this.signIdArray = this.signIdArray.filter(num => num !== user.id)
-              })
+          ForEach(this.otherUser.filter(u => this.signIdArray.includes(u.id)), (user: userMenu) => {
+            Row() {
+              Text(user.uname)
+                .fontSize(13)
+                .fontColor($r('sys.color.ohos_id_color_text_primary'))
+              Image($r('sys.media.ohos_ic_public_close'))
+                .width(14).height(14)
+                .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
+                .margin({ left: 4 })
+            }
+            .padding({
+              left: 10,
+              right: 10,
+              top: 5,
+              bottom: 5
+            })
+            .backgroundColor($r('sys.color.ohos_id_color_emphasize', 0.1))
+            .borderRadius(14)
+            .margin({ right: 8, bottom: 6 })
+            .onClick(() => {
+              this.signIdArray = this.signIdArray.filter(num => num !== user.id)
             })
           })
         }
@@ -664,18 +661,18 @@ export struct SignPage {
       .border({ width: 1, color: $r('sys.color.comp_divider') })
       .onClick(() => {
         if (this.DestinationLocationName !== '获取中...' && this.DestinationLocationName !== '该签到无要求位置') {
-          this.copyText(this.DestinationLocationName)
+          ChaoxingUtils.copyText(this.DestinationLocationName)
         }
       })
 
-      if (this.queryParams?.['address']) {
+      if (this.commonQueryParams.address) {
         Column() {
-          Text(`已选: ${this.queryParams['address']}`)
+          Text(`已选: ${this.commonQueryParams.address}`)
             .fontSize(13).fontColor($r('sys.color.ohos_id_color_text_primary')).margin({ top: 10 })
           Row({ space: 12 }) {
-            Text(`经度 ${this.queryParams['longitude']?.toString().substring(0, 10)}`)
+            Text(`经度 ${this.commonQueryParams.longitude.substring(0, 10)}`)
               .fontSize(11).fontColor($r('sys.color.ohos_id_color_text_tertiary'))
-            Text(`纬度 ${this.queryParams['latitude']?.toString().substring(0, 10)}`)
+            Text(`纬度 ${this.commonQueryParams.latitude.substring(0, 10)}`)
               .fontSize(11).fontColor($r('sys.color.ohos_id_color_text_tertiary'))
           }.margin({ top: 4 })
         }.alignItems(HorizontalAlign.Start).width('100%')
@@ -711,9 +708,9 @@ export struct SignPage {
                 return;
               }
               const LoginLocation = ChaoxingUtils.gcj02_to_bd09(data.latitude, data.longitude)
-              this.queryParams['address'] = data.name as string;
-              this.queryParams['longitude'] = LoginLocation.lon as number;
-              this.queryParams['latitude'] = LoginLocation.lat as number;
+              this.commonQueryParams.address = data.name as string;
+              this.commonQueryParams.longitude = LoginLocation.lon.toString();
+              this.commonQueryParams.latitude = LoginLocation.lat.toString();
             })
         })
       }
@@ -728,7 +725,7 @@ export struct SignPage {
 
   @Builder
   QRCodeCard() {
-QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.ActivityId.toString() || '',})
+    QRCodeLocation({ ActivityId: this.activityInfo?.ActivityId.toString() || '' })
   }
 
   @Builder
@@ -810,17 +807,25 @@ QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.Act
                 .padding({ top: 12, left: 16 })
               }
             } else if (this.activityInfo?.signType === SignType.LOCATION) {
-              Column() { this.LocationCard() }
-                .margin({ left: 16, right: 16 })
+              Column() {
+                this.LocationCard()
+              }
+              .margin({ left: 16, right: 16 })
             } else if (this.activityInfo?.signType === SignType.GESTURE) {
-              Column() { this.GestureSignCard() }
-                .margin({ left: 16, right: 16 })
+              Column() {
+                this.GestureSignCard()
+              }
+              .margin({ left: 16, right: 16 })
             } else if (this.activityInfo.signType === SignType.QRCODE) {
-              Column() { this.QRCodeCard() }
-                .margin({ left: 16, right: 16 })
+              Column() {
+                this.QRCodeCard()
+              }
+              .margin({ left: 16, right: 16 })
             } else if (this.activityInfo.signType === SignType.PASSWORD) {
-              Column() { this.PasswordSignCard() }
-                .margin({ left: 16, right: 16 })
+              Column() {
+                this.PasswordSignCard()
+              }
+              .margin({ left: 16, right: 16 })
             } else {
               Text('未支持的签到类型')
                 .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
@@ -880,20 +885,9 @@ QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.Act
     .title('签到', {
       backgroundColor: $r('sys.color.ohos_id_color_background')
     })
-    .onReady((ctx: NavDestinationContext) => {
-      this.pathInfos = ctx.pathStack;
-    })
     .onAppear(() => {
       this.initPageData(); // 统一数据初始化入口
     })
-  }
-
-  // 1. 逻辑方法：复制文本
-  private copyText(text: string) {
-    const pasteboardData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text)
-    const systemPasteboard = pasteboard.getSystemPasteboard()
-    systemPasteboard.setData(pasteboardData)
-    promptAction.showToast({ message: '已复制到剪贴板', duration: 1500 })
   }
 
   // 2. 逻辑方法：初始化数据（替代原 onAppear 中的杂乱逻辑）
@@ -907,7 +901,7 @@ QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.Act
     }
 
     const cookies = currentUser.cookies;
-    this.queryParams['activeId'] = this.activityInfo.ActivityId
+    this.commonQueryParams.activeId = this.activityInfo.ActivityId
 
     // 初始化主用户信息用于手势和密码签到
     try {
@@ -1071,7 +1065,7 @@ QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.Act
 
   // 4. 逻辑方法：处理签到动作
   private async handleSignAction() {
-    if (this.signIdArray.length !== this.objectidArr.length && this.ifPhoto) {
+    if (this.objectidArr.filter(id => id).length < this.signIdArray.length && this.ifPhoto) {
       promptAction.showToast({ message: '请等待图片上传完成' })
       return
     }
@@ -1094,9 +1088,9 @@ QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.Act
 
       const cookies = currentUser.cookies;
       let loc = await Sign.GetLocationSignInfo(cookies, this.activityInfo.ActivityId)
-      this.queryParams['address'] = loc['locationText'] as string;
-      this.queryParams['longitude'] = loc['longitude'] as number;
-      this.queryParams['latitude'] = loc['latitude'] as number;
+      this.commonQueryParams.address = loc['locationText'] as string;
+      this.commonQueryParams.longitude = (loc['longitude'] as number).toString();
+      this.commonQueryParams.latitude = (loc['latitude'] as number).toString();
       let options: scanBarcode.ScanOptions = {
         scanTypes: [scanCore.ScanType.ALL],
         enableMultiMode: true,
@@ -1117,10 +1111,10 @@ QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.Act
                   return;
                 }
 
-                this.queryParams['enc'] = parse['enc']
+                this.commonQueryParams.enc = parse['enc']
 
                 hilog.info(DOMAIN, TAG,
-                  `Scan successful, enc: ${this.queryParams['enc']}`);
+                  `Scan successful, enc: ${this.commonQueryParams.enc}`);
 
                 // 扫码成功后，执行签到
                 const hashTable = new Map<string, string[]>();
@@ -1138,7 +1132,7 @@ QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.Act
                       isMainUser = true
                     } else {
                       // 其他用户
-                      userInfo = await dbManager.getUserByPosition(userId) as UserDataAndId
+                      userInfo = await dbManager.getUserByPosition(userId, false) as UserDataAndId
                       isMainUser = false
                     }
 
@@ -1197,7 +1191,7 @@ QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.Act
           isMainUser = true
         } else {
           // 其他用户
-          userInfo = await dbManager.getUserByPosition(userId) as UserDataAndId
+          userInfo = await dbManager.getUserByPosition(userId, false) as UserDataAndId
           isMainUser = false
         }
 
@@ -1215,14 +1209,19 @@ QRCodeLocation({queryParams: this.queryParams,ActivityId: this.activityInfo?.Act
     isMainUser: boolean) {
     const loginInfo = await loginFunction.getUserInfo(userInfo.cookies)
 
-    this.queryParams['uid'] = userInfo.uid
-    this.queryParams['name'] = loginInfo.uname
-    this.queryParams['fid'] = loginInfo.fid
     if (this.ifPhoto && photoObjId) {
-      this.queryParams['objectId'] = photoObjId
+      this.commonQueryParams.objectId = photoObjId
+    } else {
+      this.commonQueryParams.objectId = undefined
+    }
+    this.userQueryParams = {
+      uid: userInfo.uid.toString(),
+      name: loginInfo.uname,
+      fid: loginInfo.fid.toString()
     }
 
-    let result = await Sign.DoSignIn(userInfo.cookies, this.queryParams, isMainUser)
+    let result = await Sign.DoSignInV2(userInfo.cookies, this.commonQueryParams, this.userQueryParams)
+
 
     if (typeof result === 'string' && (result.includes('<html') || result.includes('500 Internal Server Error'))) {
       result = '服务端错误 (500)';

@@ -61,6 +61,16 @@ export interface SignQueryParams {
   longitude: string;
 }
 
+export interface CommonSignParams {
+  activeId: string;
+  latitude: string;
+  longitude: string;
+  address: string;
+  enc: string;
+  objectId?: string;
+  signCode?: string;
+}
+
 export interface PreSignParamInterface {
   activePrimaryId: string,
   classId: string,
@@ -140,11 +150,16 @@ export class Sign {
    * @param signCode 签到码或手势顺序码
    * @returns 签到结果
    */
-  static async DoSignWithCode(cookies: string, queryParams: object, signCode: string): Promise<string> {
-    const url = ChaoXingApi.URL_SIGN.buildUrl(queryParams).buildUrl({
+  static async DoSignWithCode(cookies: string, queryParams: object, signCode: string,
+    Captcha?: string): Promise<string> {
+    const builder = ChaoXingApi.URL_SIGN.buildUrl(queryParams).buildUrl({
       deviceCode: ChaoxingUtils.generateUUIDv4(),
       signCode: signCode
-    }).toString()
+    })
+    if (Captcha) {
+      builder.buildUrl({ 'validate': Captcha })
+    }
+    const url = builder.toString()
     hilog.debug(DOMAIN, TAG, 'Executing sign with code request');
     return Sign.httpGetString(url, cookies)
   }
@@ -157,14 +172,17 @@ export class Sign {
     return Sign.httpGetString(url, cookies)
   }
 
-  static async DoSignInV2(cookies: string, commonQueryParams: object, userQueryParams: UserQueryObject,
-    needDeviceCode: boolean = false) {
-    const url = ChaoXingApi.URL_SIGN.buildUrl(commonQueryParams)
+  static async DoSignInV2(cookies: string, commonQueryParams: CommonSignParams, userQueryParams: UserQueryObject,
+    validate?: string) {
+    const builder = ChaoXingApi.URL_SIGN.buildUrl(commonQueryParams)
       .buildUrl(userQueryParams)
       .buildUrl({
-        deviceCode: needDeviceCode ? ChaoxingUtils.generateUUIDv4() : ''
+        deviceCode: ''
       })
-      .toString()
+    if (validate) {
+      builder.buildUrl({ 'validate': validate })
+    }
+    const url = builder.toString()
     hilog.debug(DOMAIN, TAG, 'Executing sign-in V2 request');
     return Sign.httpGetString(url, cookies)
   }
@@ -334,7 +352,8 @@ export class Sign {
     const captchaKey = CryptoJS.MD5(serverTime.toString() + ChaoxingUtils.generateUUIDv4()).toString()
     const iv =
       CryptoJS.MD5(ChaoXingApi.CAPTCHA_ID + type + systemDateTime.getTime() + ChaoxingUtils.generateUUIDv4()).toString()
-    const token = CryptoJS.MD5(serverTime.toString() + ChaoXingApi.CAPTCHA_ID + type + captchaKey) + `:${serverTime + TOKEN_EXPIRY_MS}`
+    const token = CryptoJS.MD5(serverTime.toString() + ChaoXingApi.CAPTCHA_ID + type + captchaKey) +
+      `:${serverTime + TOKEN_EXPIRY_MS}`
 
     const referer = ChaoXingApi.URL_PRE_SIGN.buildUrl(captchaParams).toString()
     let url = ChaoXingApi.URL_GET_CAPTCHA_PHOTOS.buildUrl({
@@ -365,11 +384,41 @@ export class Sign {
     }
   }
 
-  static async checkCaptchaResult(captchaParams: object, refererParams: PreSignParamInterface) {
+  static async checkCaptchaResult(captchaParams: object, refererParams: PreSignParamInterface): Promise<string | null> {
     const httpRequest = http.createHttp()
     try {
+      const referer = ChaoXingApi.URL_PRE_SIGN.buildUrl(refererParams).toString()
+      const url = ChaoXingApi.URL_CHECK_CAPTCHA_RESULT.buildUrl(captchaParams)
+        .buildUrl({
+          'coordinate': '[]',
+          'runEnv': '10',
+          't': 'a',
+          '_': systemDateTime.getTime().toString()
+        })
+        .toString()
+
+      const result = await httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        header: { 'referer': referer }
+      })
+
+      const body = result.result.toString().replace(`${CAPTCHA_CALLBACK}(`, '').replace(')', '')
+      const jsonResult = JSON.parse(body) as object
+
+      if ((jsonResult?.['error'] as number) === 1) {
+        hilog.error(DOMAIN, TAG, `Captcha check failed: ${jsonResult?.['msg'] as string}`);
+        return null
+      }
+
+      if ((jsonResult?.['result'] as boolean)) {
+        const extraData = JSON.parse((jsonResult?.['extraData'] as string).replace(/\\"/g, '"')) as object
+        return extraData?.['validate'] as string
+      }
+
+      return null
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Check captcha result failed: ${error.message}`);
+      hilog.error(DOMAIN, TAG, `Check captcha result failed: ${(error as Error).message}`);
+      return null
     } finally {
       httpRequest.destroy()
     }

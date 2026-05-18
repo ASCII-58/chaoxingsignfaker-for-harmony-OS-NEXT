@@ -71,6 +71,14 @@
     {
       "name": "unselected",
       "value": "#484F58"
+    },
+    {
+      "name": "text_field_bg",
+      "value": "#21262D"
+    },
+    {
+      "name": "text_placeholder",
+      "value": "#6E7681"
     }
   ]
 }

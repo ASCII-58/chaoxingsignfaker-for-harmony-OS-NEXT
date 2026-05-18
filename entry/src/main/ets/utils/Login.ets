@@ -28,6 +28,12 @@ export interface UserInfo {
   puid:string
 }
 
+export interface LoginResult {
+  ok: boolean
+  message: string
+  cookies?: string
+}
+
 // Cache entry interface for user info
 interface UserInfoCacheEntry {
   data: UserInfo;
@@ -59,7 +65,7 @@ export class loginFunction {
    * @param {string} LoginString 需要加密的消息
    * @returns {Promise<string>} 求到的cookie,异常为空
    */
-  static async LoginChaoXing(LoginString: string): Promise<string> {
+  static async LoginChaoXing(LoginString: string): Promise<LoginResult> {
     hilog.debug(DOMAIN, TAG, 'Attempting login');
     const httpRequest = http.createHttp();
     const url = ChaoXingApi.URL_LOGIN;
@@ -82,21 +88,37 @@ export class loginFunction {
         if (ResultBody?.['status'] === true) {
           const set_cookies: string[] = result.header['set-cookie']
           hilog.info(DOMAIN, TAG, 'Login successful');
-          return ChaoxingUtils.processSetCookieHeaders(set_cookies);
+          return {
+            ok: true,
+            message: '登录成功',
+            cookies: ChaoxingUtils.processSetCookieHeaders(set_cookies)
+          };
         } else {
           hilog.error(DOMAIN, TAG, 'Login failed: Invalid username or password');
-          return ""
+          return {
+            ok: false,
+            message: '账号或密码错误'
+          };
         }
       } else {
         hilog.error(DOMAIN, TAG, `Login failed: Network error (${result.responseCode})`);
-        return ""
+        return {
+          ok: false,
+          message: `网络错误(${result.responseCode})`
+        };
       }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Login exception: ${error.message}`);
       if (error.message === ERROR_MAX_REDIRECTS) {
-        return "服务器错误，请稍后重试"
+        return {
+          ok: false,
+          message: '服务器错误，请稍后重试'
+        };
       }
-      return ""
+      return {
+        ok: false,
+        message: '登录失败，请稍后重试'
+      };
     } finally {
       // 无论成功或失败，都必须销毁请求对象
       httpRequest.destroy();
@@ -209,13 +231,14 @@ export class loginFunction {
       hilog.debug(DOMAIN, TAG, `Parsing login URL for phone: ${phone?.substring(0, 3)}***`);
       let AESPhone = ChaoxingUtils.encryptByAES(phone)
       let body = ChaoxingUtils.getLoginBody(AESPhone, pwd);
-      let cookie = await loginFunction.LoginChaoXing(body)
+      const loginResult = await loginFunction.LoginChaoXing(body)
       
-      if (!cookie) {
+      if (!loginResult.ok || !loginResult.cookies) {
         hilog.error(DOMAIN, TAG, 'LoginByURL: Failed to get cookie');
-        return '登录失败，请检查账号密码'
+        return loginResult.message
       }
       
+      const cookie = loginResult.cookies
       let userInfo = await loginFunction.getUserInfo(cookie)
       
       if (userInfo.msg !== 'successful') {

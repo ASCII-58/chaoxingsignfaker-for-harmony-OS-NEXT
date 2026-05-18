@@ -5,6 +5,8 @@
 
 // 使用 import 语法引入 CryptoJS
 import CryptoJS from '@ohos/crypto-js'
+import { pasteboard } from '@kit.BasicServicesKit';
+import { promptAction } from '@kit.ArkUI';
 /**
  * 拼接 URL 参数
  * @param {string} url - 基础 URL
@@ -251,5 +253,12 @@ export class ChaoxingUtils {
   static isSignActivityEnded(endTime: number): boolean {
     const currentTime = Date.now();
     return currentTime > endTime;
+  }
+
+  static copyText(text: string) {
+    const pasteboardData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text)
+    const systemPasteboard = pasteboard.getSystemPasteboard()
+    systemPasteboard.setData(pasteboardData)
+    promptAction.showToast({ message: '已复制到剪贴板', duration: 1500 })
   }
 }

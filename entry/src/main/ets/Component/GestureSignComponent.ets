@@ -1,4 +1,4 @@
-import { Sign, SignInfoResult } from '../utils/sign';
+import { Sign, SignInfoResult, CommonSignParams, UserQueryObject } from '../utils/sign';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction } from '@kit.ArkUI';
 import { hdsEffect } from '@kit.UIDesignKit';
@@ -91,8 +91,20 @@ export struct GestureSignComponent {
         this.uname,
         this.fid
       );
-
-      const result = await Sign.DoSignWithCode(this.cookies, queryParams, gestureCode);
+      const commonQueryParams: CommonSignParams = {
+        activeId: queryParams.activeId,
+        latitude: queryParams.latitude,
+        longitude: queryParams.longitude,
+        address: '',
+        enc: '',
+        signCode: gestureCode
+      };
+      const userQueryParams: UserQueryObject = {
+        uid: queryParams.uid.toString(),
+        name: queryParams.name,
+        fid: queryParams.fid.toString()
+      };
+      const result = await Sign.DoSignInV2(this.cookies, commonQueryParams, userQueryParams);
       
       if (result === 'success') {
         this.isSignSuccess = true;

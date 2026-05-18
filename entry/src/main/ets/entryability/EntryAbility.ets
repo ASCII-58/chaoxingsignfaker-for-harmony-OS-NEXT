@@ -42,10 +42,10 @@ export default class EntryAbility extends UIAbility {
       const username = user?.phone
       const pwd = user?.pwd
       const loginBody = ChaoxingUtils.getLoginBody(ChaoxingUtils.encryptByAES(username), pwd)
-      const cookies = await loginFunction.LoginChaoXing(loginBody)
-      if (cookies) {
+      const loginResult = await loginFunction.LoginChaoXing(loginBody)
+      if (loginResult.ok && loginResult.cookies) {
         // Update host user cookies
-        dbManager.updateUser(1, { 'cookies': cookies }, true)
+        dbManager.updateUser(1, { 'cookies': loginResult.cookies }, true)
       }
       // Load main page immediately without waiting for other users to login
       windowStage.loadContent('pages/initPage', (err) => {
@@ -191,9 +191,9 @@ export default class EntryAbility extends UIAbility {
         const username = userInfo.phone
         const pwd = userInfo.pwd
         const loginBody = ChaoxingUtils.getLoginBody(ChaoxingUtils.encryptByAES(username), pwd)
-        const cookies = await loginFunction.LoginChaoXing(loginBody)
-        if (cookies) {
-          await dbManager.updateUser(userInfo.id, { cookies: cookies }, false)
+        const loginResult = await loginFunction.LoginChaoXing(loginBody)
+        if (loginResult.ok && loginResult.cookies) {
+          await dbManager.updateUser(userInfo.id, { cookies: loginResult.cookies }, false)
           hilog.debug(DOMAIN, TAG, `Refreshed cookies for user at position ${position}`);
         } else {
           await dbManager.deleteUser(userInfo.id, false)

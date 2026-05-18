@@ -96,9 +96,9 @@ export default struct Login {
       const pwd = ChaoxingUtils.encryptByAES(this.password)
       const result = await loginFunction.LoginChaoXing(ChaoxingUtils.getLoginBody(uname, pwd))
 
-      if (result && result !== '服务器错误，请稍后重试') {
+      if (result.ok && result.cookies) {
         try {
-          const cookies = result
+          const cookies = result.cookies
           const info = await loginFunction.getUserInfo(cookies)
           const dbManager = DatabaseManager.getInstance()
           const userData: UserData = {
@@ -128,7 +128,7 @@ export default struct Login {
         }
       } else {
         promptAction.showToast({
-          message: result || '登录失败',
+          message: result.message,
           duration: 1500,
           bottom: '20%'
         });
