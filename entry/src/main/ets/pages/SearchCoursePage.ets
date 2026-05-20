@@ -78,9 +78,9 @@ struct CourseItem {
       }
     })
     .onAppear(async () => {
-      if (this.course.imageurl) {
+      if (this.course.imageURL) {
         try {
-          this.courseImage = await loginFunction.GetPic(this.course.imageurl) as image.PixelMap
+          this.courseImage = await loginFunction.GetPic(this.course.imageURL) as image.PixelMap
         } catch (e) {
           hilog.error(DOMAIN, TAG, 'Failed to load course image', e)
         }

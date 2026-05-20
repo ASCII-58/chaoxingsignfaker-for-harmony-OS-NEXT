@@ -135,3 +135,7 @@
   1. 自动添加到相应的资源 JSON 文件
   2. 同时更新深色模式配置
   3. 通知用户已添加新资源及其默认值
+curl.exe -L \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
+  <https://api.github.com/rate_limit>

@@ -15,11 +15,15 @@
       "buildFunction": "init"
     },{
       "name" : "HomePage",
-      "pageSourceFile": "src/main/ets/pages/newIndex.ets",
+      "pageSourceFile": "src/main/ets/pages/Index.ets",
       "buildFunction": "init"
     },{
       "name" : "LoginPage",
       "pageSourceFile": "src/main/ets/pages/LoginPage.ets",
+      "buildFunction": "init"
+    },{
+      "name": "Debug",
+      "pageSourceFile": "src/main/ets/pages/DebugInfoPage.ets",
       "buildFunction": "init"
     }
   ]

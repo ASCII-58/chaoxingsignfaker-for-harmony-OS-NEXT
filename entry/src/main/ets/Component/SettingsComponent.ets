@@ -14,6 +14,7 @@ const COLOR_MODE_LABELS = ['自动', '浅色', '深色'];
 export struct SettingsComponent {
   @State version: string = '';
   @State colorModeIndex: number = 0;
+  onImportDone: () => void = () => {};
   private context = getContext(this) as common.UIAbilityContext;
 
   async aboutToAppear() {
@@ -152,6 +153,7 @@ export struct SettingsComponent {
 
       if (result.success) {
         promptAction.showToast({ message: result.message });
+        this.onImportDone();
       } else {
         promptAction.showToast({ message: result.message });
       }
@@ -189,7 +191,7 @@ export struct SettingsComponent {
 
   build() {
     Column() {
-
+      Column().height(10)
       Text('设置')
         .fontSize(24).fontWeight(FontWeight.Bold)
         .width('100%').textAlign(TextAlign.Start)

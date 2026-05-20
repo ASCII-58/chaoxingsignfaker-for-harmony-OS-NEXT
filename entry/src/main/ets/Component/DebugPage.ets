@@ -3,73 +3,105 @@ import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { DatabaseManager } from '../utils/DataBase';
 
-const PREF_FIRST_INSTALL_TIME = 'first_install_time';
-const PREF_REAL_NAME_VERIFIED = 'real_name_verified';
+const SIGN_TIME = 'sign_time';
+const VERSION = 'version';
+const SIGN_EXPIRY_MS = 12 * 30 * 24 * 60 * 60 * 1000;
+const BACKUP_REMINDER_MS = 11 * 30 * 24 * 60 * 60 * 1000;
 
 @Component
 export struct DebugPage {
   private context = getContext(this) as common.UIAbilityContext;
   @State dbInfo: string = '';
+  @Prop fun:()=>void
 
   async aboutToAppear() {
-    await this.loadDbInfo();
+    await this.loadInfo();
   }
 
-  async loadDbInfo() {
+  async loadInfo() {
     try {
       const dbManager = DatabaseManager.getInstance();
       const hostCount = await dbManager.getTableCount('HostUser');
       const otherCount = await dbManager.getTableCount('OtherUser');
-      this.dbInfo = `HostUser: ${hostCount} 条, OtherUser: ${otherCount} 条`;
+      const signInfo = await this.getSignInfo();
+      this.dbInfo = `HostUser: ${hostCount} 条, OtherUser: ${otherCount} 条\n\n${signInfo}`;
     } catch (e) {
       this.dbInfo = '加载失败';
     }
   }
 
-  async getInstallInfo(): Promise<string> {
+  async getSignInfo(): Promise<string> {
     let pref = await preferences.getPreferences(this.context, 'settings');
-    const firstInstall = await pref.get(PREF_FIRST_INSTALL_TIME, 0) as number;
-    const verified = await pref.get(PREF_REAL_NAME_VERIFIED, false) as boolean;
-    if (firstInstall === 0) {
-      return '首次安装时间: 未记录\n实名认证: 未设置';
+    const signTime = await pref.get(SIGN_TIME, 0) as number;
+    const ver = await pref.get(VERSION, '') as string;
+    if (signTime === 0) {
+      return '签名时间: 未记录\n版本: 未记录';
     }
-    const date = new Date(firstInstall);
-    const days = Math.floor((Date.now() - firstInstall) / (24 * 60 * 60 * 1000));
-    return `首次安装: ${date.toISOString().substring(0, 10)}\n已使用: ${days} 天\n实名认证: ${verified ? '已认证' : '未认证'}`;
+    const date = new Date(signTime);
+    const elapsed = Date.now() - signTime;
+    const days = Math.floor(elapsed / (24 * 60 * 60 * 1000));
+    let statusLine: string;
+    if (elapsed >= SIGN_EXPIRY_MS) {
+      statusLine = '状态: 已过期';
+    } else if (elapsed >= BACKUP_REMINDER_MS) {
+      const remain = Math.ceil((SIGN_EXPIRY_MS - elapsed) / (24 * 60 * 60 * 1000));
+      statusLine = `状态: 即将过期 (剩余约${remain}天)`;
+    } else {
+      statusLine = '状态: 有效';
+    }
+    return `签名时间: ${date.toISOString().substring(0, 10)}\n版本: ${ver}\n${statusLine}\n已过 ${days} 天`;
   }
 
-  async resetInstallState() {
+  async resetSignState() {
     try {
       let pref = await preferences.getPreferences(this.context, 'settings');
-      await pref.delete(PREF_FIRST_INSTALL_TIME);
-      await pref.delete(PREF_REAL_NAME_VERIFIED);
+      await pref.delete(SIGN_TIME);
+      await pref.delete(VERSION);
       await pref.flush();
-      promptAction.showToast({ message: '安装状态已重置' });
+      this.dbInfo = '';
+      promptAction.showToast({ message: '签名状态已重置' });
     } catch (e) {
       promptAction.showToast({ message: '重置失败' });
     }
   }
 
-  async setInstallTimeTo23Months() {
+  async setSignTimeToTriggerReminder() {
     try {
-      const target = Date.now() - 23 * 30 * 24 * 60 * 60 * 1000;
+      const target = Date.now() - BACKUP_REMINDER_MS - 60 * 1000;
       let pref = await preferences.getPreferences(this.context, 'settings');
-      await pref.put(PREF_FIRST_INSTALL_TIME, target);
-      await pref.put(PREF_REAL_NAME_VERIFIED, true);
+      await pref.put(SIGN_TIME, target);
+      await pref.put(VERSION, '1.0.0-debug');
       await pref.flush();
-      promptAction.showToast({ message: '安装时间已设为23个月前，下次启动将触发备份提醒' });
+      this.dbInfo = '';
+      promptAction.showToast({ message: '签名时间已设为11个月前，下次启动将触发备份提醒' });
     } catch (e) {
       promptAction.showToast({ message: '设置失败' });
     }
   }
 
-  async setInstallDays(days: number) {
+  async setSignTimeExpired() {
+    try {
+      const target = Date.now() - SIGN_EXPIRY_MS - 60 * 1000;
+      let pref = await preferences.getPreferences(this.context, 'settings');
+      await pref.put(SIGN_TIME, target);
+      await pref.put(VERSION, '1.0.0-debug');
+      await pref.flush();
+      this.dbInfo = '';
+      promptAction.showToast({ message: '签名时间已设为过期' });
+    } catch (e) {
+      promptAction.showToast({ message: '设置失败' });
+    }
+  }
+
+  async setSignDaysAgo(days: number) {
     try {
       const target = Date.now() - days * 24 * 60 * 60 * 1000;
       let pref = await preferences.getPreferences(this.context, 'settings');
-      await pref.put(PREF_FIRST_INSTALL_TIME, target);
+      await pref.put(SIGN_TIME, target);
+      await pref.put(VERSION, '1.0.0-debug');
       await pref.flush();
-      promptAction.showToast({ message: `安装时间已设为 ${days} 天前` });
+      this.dbInfo = '';
+      promptAction.showToast({ message: `签名时间已设为 ${days} 天前` });
     } catch (e) {
       promptAction.showToast({ message: '设置失败' });
     }
@@ -85,7 +117,7 @@ export struct DebugPage {
       List({ space: 12 }) {
         ListItem() {
           Column() {
-            Text('安装状态')
+            Text('签名状态')
               .fontSize(14)
               .fontColor($r('sys.color.ohos_id_color_text_secondary'))
               .width('100%')
@@ -114,7 +146,7 @@ export struct DebugPage {
 
             Column() {
               Row() {
-                Text('重置安装状态')
+                Text('重置签名状态')
                   .fontSize(16)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'))
                 Blank()
@@ -123,14 +155,14 @@ export struct DebugPage {
                   .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
               }
               .width('100%').padding(12)
-              .onClick(() => { this.resetInstallState() })
+              .onClick(() => { this.resetSignState() })
 
               Divider()
                 .color($r('sys.color.ohos_id_color_list_separator'))
                 .margin({ left: 12, right: 12 })
 
               Row() {
-                Text('设23个月前安装（触发备份提醒）')
+                Text('设11个月前签名（触发备份提醒）')
                   .fontSize(14)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'))
                 Blank()
@@ -139,14 +171,14 @@ export struct DebugPage {
                   .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
               }
               .width('100%').padding(12)
-              .onClick(() => { this.setInstallTimeTo23Months() })
+              .onClick(() => { this.setSignTimeToTriggerReminder() })
 
               Divider()
                 .color($r('sys.color.ohos_id_color_list_separator'))
                 .margin({ left: 12, right: 12 })
 
               Row() {
-                Text('设1天前安装')
+                Text('设过期签名（12个月前）')
                   .fontSize(14)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'))
                 Blank()
@@ -155,14 +187,14 @@ export struct DebugPage {
                   .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
               }
               .width('100%').padding(12)
-              .onClick(() => { this.setInstallDays(1) })
+              .onClick(() => { this.setSignTimeExpired() })
 
               Divider()
                 .color($r('sys.color.ohos_id_color_list_separator'))
                 .margin({ left: 12, right: 12 })
 
               Row() {
-                Text('设365天前安装')
+                Text('设1天前签名')
                   .fontSize(14)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'))
                 Blank()
@@ -171,11 +203,32 @@ export struct DebugPage {
                   .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
               }
               .width('100%').padding(12)
-              .onClick(() => { this.setInstallDays(365) })
+              .onClick(() => { this.setSignDaysAgo(1) })
+
+              Divider()
+                .color($r('sys.color.ohos_id_color_list_separator'))
+                .margin({ left: 12, right: 12 })
+
+              Row() {
+                Text('设365天前签名')
+                  .fontSize(14)
+                  .fontColor($r('sys.color.ohos_id_color_text_primary'))
+                Blank()
+                Image($r('app.media.arrow_right'))
+                  .width(16).height(16)
+                  .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
+              }
+              .width('100%').padding(12)
+              .onClick(() => { this.setSignDaysAgo(365) })
             }
             .backgroundColor($r('sys.color.ohos_id_color_list_card_bg'))
             .borderRadius(16)
           }
+        }
+        ListItem(){
+          Column(){
+            Text('打开Debug详情页')
+          }.onClick(()=>{ this.fun() })
         }
       }
       .width('100%').layoutWeight(1)

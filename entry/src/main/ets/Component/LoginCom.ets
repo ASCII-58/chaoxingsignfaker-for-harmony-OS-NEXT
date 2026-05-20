@@ -42,8 +42,6 @@ export struct loginByCommon {
             this.isShow = !this.isShow
           } else if (operationResult === 0) {
             promptAction.showToast({ message: '数据库异常，可能需要重启应用', duration: 10000 })
-            let applicationContext = this.getUIContext().getHostContext()?.getApplicationContext();
-            applicationContext?.killAllProcesses(false);
           } else {
             promptAction.showToast({ message: '用户已登录', duration: 2000 })
           }
@@ -105,43 +103,43 @@ export struct loginByCommon {
           .borderRadius(12)
           .padding({ left: 15, right: 15 })
 
-          Stack({ alignContent: Alignment.End }) {
-            TextInput({ placeholder: '密码', text: this.password })
-              .type(InputType.Normal)
-              .enterKeyType(EnterKeyType.Go)
-              .onSubmit(() => {
-                if (this.LoginEnable && !this.isLoading) {
-                  this.handleLogin()
-                }
-              })
-              .onChange((value: string) => {
-                this.password = value;
-                if (this.username && this.password) {
-                  this.LoginEnable = true
-                }
-              })
-              .fontColor(this.isPasswordVisible ? $r('app.color.primary_text') : Color.Transparent)
-              .fontFamily(this.isPasswordVisible ? 'HarmonyOS Sans' : 'monospace')
-              .caretColor($r('app.color.primary_text'))
-              .placeholderFont({ size: 16 })
-              .height(50)
-              .width('100%')
-              .backgroundColor($r('app.color.text_field_bg'))
-              .borderRadius(12)
-              .padding({ left: 15, right: 40 })
+        Stack({ alignContent: Alignment.End }) {
+          TextInput({ placeholder: '密码', text: this.password })
+            .type(InputType.Normal)
+            .enterKeyType(EnterKeyType.Go)
+            .onSubmit(() => {
+              if (this.LoginEnable && !this.isLoading) {
+                this.handleLogin()
+              }
+            })
+            .onChange((value: string) => {
+              this.password = value;
+              if (this.username && this.password) {
+                this.LoginEnable = true
+              }
+            })
+            .fontColor(this.isPasswordVisible ? $r('app.color.primary_text') : Color.Transparent)
+            .fontFamily(this.isPasswordVisible ? 'HarmonyOS Sans' : 'monospace')
+            .caretColor($r('app.color.primary_text'))
+            .placeholderFont({ size: 16 })
+            .height(50)
+            .width('100%')
+            .backgroundColor($r('app.color.text_field_bg'))
+            .borderRadius(12)
+            .padding({ left: 15, right: 40 })
 
-            if (!this.isPasswordVisible && this.password.length > 0) {
-              Text(this.password.replace(/./g, '•'))
-                .fontSize(16)
-                .fontColor($r('app.color.primary_text'))
-                .fontFamily('monospace')
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Clip })
-                .width('100%')
-                .height(50)
-                .padding({ left: 15, right: 40 })
-                .hitTestBehavior(HitTestMode.None)
-            }
+          if (!this.isPasswordVisible && this.password.length > 0) {
+            Text(this.password.replace(/./g, '•'))
+              .fontSize(16)
+              .fontColor($r('app.color.primary_text'))
+              .fontFamily('monospace')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Clip })
+              .width('100%')
+              .height(50)
+              .padding({ left: 15, right: 40 })
+              .hitTestBehavior(HitTestMode.None)
+          }
 
           Image(this.isPasswordVisible ? $r('app.media.eye') : $r('app.media.eyeclose'))
             .width(24)

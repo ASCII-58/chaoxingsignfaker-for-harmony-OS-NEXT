@@ -37,7 +37,7 @@ export class CourseAndActivity {
           if (item.content && item.content.course && item.content.course.data) {
             item.content.course.data.forEach(course => {
               result.push({
-                imageurl: course.imageurl,
+                imageURL: course.imageurl,
                 id: course.id, // 课程id
                 teacherfactor: course.teacherfactor,
                 classId: item.content.id, // 班级id
@@ -60,7 +60,7 @@ export class CourseAndActivity {
       classList:
       [
         {
-          imageurl: '',
+          imageURL: '',
           id: '',
           teacherfactor: '',
           classId: '',
@@ -118,7 +118,7 @@ export interface ActivityItem {
   endTime: number;
 }
 export interface ClassInfo {
-  imageurl: string;
+  imageURL: string;
   id: string; // 课程id
   teacherfactor: string;
   classId: string; // 班级id

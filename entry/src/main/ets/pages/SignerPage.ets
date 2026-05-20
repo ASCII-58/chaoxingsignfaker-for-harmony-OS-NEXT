@@ -1,5 +1,5 @@
 import { ActivityInfo, SignType } from './ActivityListPage';
-import { Sign, CommonSignParams, UserQueryObject } from '../utils/sign';
+import { CommonSignParams, Sign, UserQueryObject } from '../utils/sign';
 import { JSON } from '@kit.ArkTS';
 import { FunctionalButton, functionalButtonComponentManager } from '@kit.ScenarioFusionKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -18,6 +18,7 @@ import { PasswordSignComponent } from '../Component/PasswordSignComponent';
 import { scanBarcode, scanCore } from '@kit.ScanKit';
 import UrlTools from '../utils/urlTools';
 import { hdsEffect } from '@kit.UIDesignKit';
+import { CaptchaComponent } from '../Component/Captcha';
 
 const TAG = 'SignerPage';
 const DOMAIN = 0x0008;
@@ -496,7 +497,6 @@ struct QRCodeLocation {
       }
     })
   }
-
 }
 
 // ---------------------------------------------------------------
@@ -774,17 +774,26 @@ export struct SignPage {
     .width('100%')
   }
 
+  @Builder
+  CaptchaSheet() {
+    CaptchaComponent({ signIdArray: this.signIdArray })
+  }
+
   build() {
     NavDestination() {
       if (this.activityInfo) {
         Column() {
           Column() {
-            Text('签到详情')
-              .fontSize(24)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('sys.color.ohos_id_color_text_primary'))
-              .width('100%')
-              .padding({ left: 16, top: 20, bottom: 16 })
+            Row() {
+              Text('签到详情')
+                .fontSize(24)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('sys.color.ohos_id_color_text_primary'))
+                //
+                .padding({ left: 16, top: 20, bottom: 16 })
+              Blank()
+              Button()
+            }.width('100%')
 
             this.UserSelectionCard()
 
@@ -1063,6 +1072,28 @@ export struct SignPage {
     })
   }
 
+  private async SignByQrCode(index: number, dbm: DatabaseManager, hashTable: Map<string, string[]>) {
+    try {
+      const userId = this.signIdArray[index]
+      let userInfo: UserDataAndId
+      let isMainUser = false
+
+      if (userId === 0) {
+        // id 为 0 表示主用户
+        userInfo = await dbm.getUserByPosition(1, true) as UserDataAndId
+        isMainUser = true
+      } else {
+        // 其他用户
+        userInfo = await dbm.getUserByPosition(userId, false) as UserDataAndId
+        isMainUser = false
+      }
+
+      await this.performSingleSign(userInfo, this.objectidArr[index], hashTable, isMainUser)
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `User ${this.signIdArray[index]} sign error`, e)
+    }
+  }
+
   // 4. 逻辑方法：处理签到动作
   private async handleSignAction() {
     if (this.objectidArr.filter(id => id).length < this.signIdArray.length && this.ifPhoto) {
@@ -1118,7 +1149,6 @@ export struct SignPage {
 
                 // 扫码成功后，执行签到
                 const hashTable = new Map<string, string[]>();
-
                 // 遍历所有选中的用户进行签到
                 for (let i = 0; i < this.signIdArray.length; i++) {
                   try {
@@ -1195,7 +1225,10 @@ export struct SignPage {
           isMainUser = false
         }
 
-        await this.performSingleSign(userInfo, this.objectidArr[i], hashTable, isMainUser)
+        let Captcha = await this.performSingleSign(userInfo, this.objectidArr[i], hashTable, isMainUser)
+        if (Captcha) {
+          let a = 0
+        }
       } catch (e) {
         hilog.error(DOMAIN, TAG, `User ${this.signIdArray[i]} sign error`, e)
       }
@@ -1206,7 +1239,7 @@ export struct SignPage {
   }
 
   private async performSingleSign(userInfo: UserDataAndId, photoObjId: string | undefined, map: Map<string, string[]>,
-    isMainUser: boolean) {
+    isMainUser: boolean): Promise<boolean> {
     const loginInfo = await loginFunction.getUserInfo(userInfo.cookies)
 
     if (this.ifPhoto && photoObjId) {
@@ -1221,7 +1254,9 @@ export struct SignPage {
     }
 
     let result = await Sign.DoSignInV2(userInfo.cookies, this.commonQueryParams, this.userQueryParams)
-
+    if (result.includes('validate')) {
+      return true
+    }
 
     if (typeof result === 'string' && (result.includes('<html') || result.includes('500 Internal Server Error'))) {
       result = '服务端错误 (500)';
@@ -1232,12 +1267,12 @@ export struct SignPage {
     } else {
       map.set(result, [loginInfo.uname]);
     }
+    return false
   }
 
   private showSignResult(hashTable: Map<string, string[]>) {
     let message = '';
     let isSuccess = false;
-
     hashTable.forEach((names, result) => {
       if (result === 'success') {
         isSuccess = true;

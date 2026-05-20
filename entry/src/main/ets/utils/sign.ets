@@ -37,13 +37,13 @@ export interface CaptchaPhotosParam {
 }
 
 export interface CaptchaPhotosResult {
-  'token': string;
+  'token': string
   'imageVerificationVo': Img
 }
 
 export interface Img {
-  'shadeImage': string;
-  'cutoutImage': string;
+  shadeImage: string;
+  cutoutImage: string;
 }
 
 export interface UserQueryObject {
@@ -69,6 +69,7 @@ export interface CommonSignParams {
   enc: string;
   objectId?: string;
   signCode?: string;
+  validate?:string
 }
 
 export interface PreSignParamInterface {

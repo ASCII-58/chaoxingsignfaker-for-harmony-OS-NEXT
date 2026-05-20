@@ -45,6 +45,7 @@ declare global {
 }
 
 // 3. 定义 API 常量
+export const GITHUB_RUST_API = 'https://api.github.com/repos/ASCII-58/chaoxingsignfaker-for-harmony-OS-NEXT/releases/tags/v'
 /**
  * 超星通用接口
  */
