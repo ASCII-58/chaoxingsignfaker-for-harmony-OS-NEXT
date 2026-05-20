@@ -77,13 +77,18 @@
      2. 是独立任务还是前一个任务的延续？
      3. 完成后是否需要新的测试周期？
 3. **状态冻结：何时必须备份 (Pre-Task Backup)**：
-   在每一个新任务周期开始时，且在你实际写入或修改任何文件之前，执行备份：
 
-   ```
-   git stash push -m "AI-PreTask: <当前新任务的简短英文摘要>"
-   ```
+在每一个新任务周期开始时，且在你实际写入或修改任何文件之前，执行备份：
 
-   示例：`git stash push -m "AI-PreTask: Add-error-handling-to-login-flow"`
+```bash
+git add .
+git commit -m "AI-PreTask: <当前新任务的简短英文摘要>"
+```
+
+**示例**：
+```bash
+git add . && git commit -m "AI-PreTask: Add-error-handling-to-login-flow"
+```
 
 4. **备份失败时的处理 (Backup Failure)**：
    如果 `git stash push` 或 `git stash pop` 失败：

@@ -228,7 +228,7 @@ export struct DebugPage {
         ListItem(){
           Column(){
             Text('打开Debug详情页')
-          }.onClick(()=>{ this.fun() })
+          }.onClick(()=>{ this.fun?.() })
         }
       }
       .width('100%').layoutWeight(1)
