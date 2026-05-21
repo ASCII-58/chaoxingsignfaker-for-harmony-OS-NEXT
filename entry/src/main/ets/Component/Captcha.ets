@@ -19,16 +19,21 @@ export struct CaptchaComponent {
   build() {
     Column() {
       Stack() {
-        Image(this.info.imageVerificationVo.shadeImage??$r('app.media.testb'))
-        Image(this.info.imageVerificationVo.cutoutImage??$r('app.media.testp')).translate({x:this.xTranslate})
-      }.onAppear(()=>{
+        Image($r('app.media.testb')).width('100%').height('100%')
+        Image($r('app.media.testp')).position({x:`${this.xTranslate/280*100}%` as Length}).height('100%').aspectRatio(0.35)
+      }
+      .width('100%')
+      .aspectRatio(2)
+      .onAppear(()=>{
         // if (this.signIdArray.length>0) {
         //   const DBM = DatabaseManager.getInstance()
         //
         //   this.signIdArray[this.CaptchaIndex]
         // }
       })
-      Slider({value:this.xTranslate,max:280})
+      Slider({value:$$this.xTranslate,max:280})
     }
+    .width('100%')
+    .padding({ left: 32, right: 32 })
   }
 }

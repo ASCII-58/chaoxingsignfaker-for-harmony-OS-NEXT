@@ -150,7 +150,7 @@ struct UserInfoComponent {
           .backgroundColor($r('app.color.class_button'))
           .borderRadius(25)
           .onClick(() => {
-            if (this.debugPwdInput === 'ASCII58DEBUG') {
+            if (this.debugPwdInput === 'nnn') {
               this.sheetVisible = false;
               this.debugPwdInput = '';
               this.activeSheet = 2;

@@ -12,7 +12,7 @@ const BACKUP_REMINDER_MS = 11 * 30 * 24 * 60 * 60 * 1000;
 export struct DebugPage {
   private context = getContext(this) as common.UIAbilityContext;
   @State dbInfo: string = '';
-  @Prop fun:()=>void
+  @Consume('pathInfos') pathInfos: NavPathStack;
 
   async aboutToAppear() {
     await this.loadInfo();
@@ -228,7 +228,7 @@ export struct DebugPage {
         ListItem(){
           Column(){
             Text('打开Debug详情页')
-          }.onClick(()=>{ this.fun?.() })
+          }.onClick(()=>{ this.pathInfos.pushPath({ name: 'Debug' }) })
         }
       }
       .width('100%').layoutWeight(1)
