@@ -1,5 +1,5 @@
 import { ActivityInfo, SignType } from './ActivityListPage';
-import { CommonSignParams, Sign, UserQueryObject } from '../utils/sign';
+import { CommonSignParams, parseSignResult, Sign, SignDetailResult, SignOutcome, SignUserParam, UserQueryObject } from '../utils/sign';
 import { JSON } from '@kit.ArkTS';
 import { FunctionalButton, functionalButtonComponentManager } from '@kit.ScenarioFusionKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -18,7 +18,7 @@ import { PasswordSignComponent } from '../Component/PasswordSignComponent';
 import { scanBarcode, scanCore } from '@kit.ScanKit';
 import UrlTools from '../utils/urlTools';
 import { hdsEffect } from '@kit.UIDesignKit';
-import { CaptchaComponent } from '../Component/Captcha';
+import { CaptchaComponent, CaptchaUserParam } from '../Component/Captcha';
 
 const TAG = 'SignerPage';
 const DOMAIN = 0x0008;
@@ -124,7 +124,8 @@ struct userItem {
           .fontWeight(FontWeight.Medium)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
 
-        Text(this.user.SignPermission === 1 ? '可签到' : this.user.SignPermission === 0 ? '已签到' : '无权限')
+        Text(this.user.SignPermission === 1 ? '可签到' : this.user.SignPermission === 0 ? '已签到' :
+        this.user.SignPermission === 2 ? '已截止' : '无权限')
           .fontSize(12)
           .fontColor(this.user.SignPermission === 1 ? $r('sys.color.ohos_id_color_text_secondary') :
             $r('sys.color.ohos_id_color_warning'))
@@ -392,12 +393,21 @@ struct photoPicker {
   }
 }
 
+/** 二维码签到 location 参数结构（对齐上游 ChaoxingLocationSignEntity 序列化） */
+export interface QRCodePosition {
+  result: number
+  latitude: number
+  longitude: number
+  address: string
+}
+
 @Reusable
 @Component
 struct QRCodeLocation {
   @Prop ActivityId: string;
+  onPositionChange?: (position: QRCodePosition) => void
   @State DestinationLocationName: string = '获取中...'
-  @State Position: object = JSON.parse('{"result":1,"mockData":"{\\"strategy\\":0,\\"probability\\":-1}"}') as object
+  @State Position: QRCodePosition | null = null
 
   build() {
     Column() {
@@ -428,21 +438,21 @@ struct QRCodeLocation {
       })
 
       // 已选坐标展示
-      if (this.Position?.['address']) {
+      if (this.Position) {
         Column() {
-          Text(`已选位置: ${this.Position['address']}`)
+          Text(`已选位置: ${this.Position.address}`)
             .fontSize(14).fontColor($r('sys.color.ohos_id_color_text_primary')).margin({ top: 8 })
-          Text(`经度: ${this.Position['longitude']}`)
+          Text(`经度: ${this.Position.longitude}`)
             .fontSize(12)
             .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
-          Text(`纬度: ${this.Position['latitude']}`)
+          Text(`纬度: ${this.Position.latitude}`)
             .fontSize(12)
             .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
         }.alignItems(HorizontalAlign.Start).width('100%').margin({ top: 8 })
       } else {
-        Text('请点击下方按钮选择位置')
+        Text('该签到可不选位置，选点后将随签到提交')
           .fontSize(14)
-          .fontColor($r('sys.color.ohos_id_color_warning'))
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
           .margin({ top: 16, bottom: 4 })
           .width('100%')
       }
@@ -472,9 +482,14 @@ struct QRCodeLocation {
                 return;
               }
               const LoginLocation = ChaoxingUtils.gcj02_to_bd09(data.latitude, data.longitude)
-              this.Position['address'] = data.name as string;
-              this.Position['longitude'] = LoginLocation.lon as number;
-              this.Position['latitude'] = LoginLocation.lat as number;
+              const newPosition: QRCodePosition = {
+                result: 1,
+                latitude: LoginLocation.lat,
+                longitude: LoginLocation.lon,
+                address: data.name as string
+              }
+              this.Position = newPosition
+              this.onPositionChange?.(newPosition)
             })
         }).enabled(this.DestinationLocationName !== '获取中...' && this.DestinationLocationName !== '该签到无要求位置')
       }
@@ -496,6 +511,294 @@ struct QRCodeLocation {
         this.DestinationLocationName = '位置信息获取失败'
       }
     })
+  }
+}
+
+// ---------------------------------------------------------------
+// 组件 4: 人脸照片准备器（人脸识别签到，对齐上游人脸流程）
+// 支持自动获取账号默认人脸（下载-随机裁剪-重上传）或从相册选择
+// ---------------------------------------------------------------
+@Component
+struct facePicker {
+  @Link signIdArray: Array<number>
+  @Link faceObjectIdArr: string[]
+  @Prop otherUser: Array<userMenu>
+  @Link otherUserDialogIsShow: boolean
+  @State statusText: string = ''
+  @State isPreparing: boolean = false
+  @State profileBtnLight: hdsEffect.PointLightSourceType = hdsEffect.PointLightSourceType.NONE;
+  @State albumBtnLight: hdsEffect.PointLightSourceType = hdsEffect.PointLightSourceType.NONE;
+
+  private resetFaceIds() {
+    this.faceObjectIdArr = new Array(this.signIdArray.length).fill('')
+  }
+
+  private refreshStatusText(finished: number, total: number) {
+    const okCount = this.faceObjectIdArr.filter(id => id).length
+    if (finished >= total && okCount === total) {
+      this.statusText = `全部人脸照片准备完成 ✓ (${okCount}/${total})`
+    } else {
+      this.statusText = `已获取 ${okCount}/${total} 张人脸照片`
+    }
+  }
+
+  private async loadUserById(userId: number): Promise<UserDataAndId> {
+    const dbManager = DatabaseManager.getInstance()
+    if (userId === 0) {
+      return await dbManager.getUserByPosition(1, true) as UserDataAndId
+    }
+    return await dbManager.getUserByPosition(userId, false) as UserDataAndId
+  }
+
+  /**
+   * 随机裁剪人脸图片（对齐上游 randomizeStylizeFaceImage 的随机裁剪，规避风控）
+   */
+  private async randomizeFaceImage(srcPath: string, dstPath: string): Promise<void> {
+    const imageSource = image.createImageSource(srcPath)
+    const pixelMap = await imageSource.createPixelMap()
+    const imageInfo = await pixelMap.getImageInfo()
+    const scale = 0.9 + Math.random() * 0.09
+    const cropWidth = Math.floor(imageInfo.size.width * scale)
+    const cropHeight = Math.floor(imageInfo.size.height * scale)
+    const cropX = Math.floor(Math.random() * (imageInfo.size.width - cropWidth))
+    const cropY = Math.floor(Math.random() * (imageInfo.size.height - cropHeight))
+    await pixelMap.crop({ x: cropX, y: cropY, size: { width: cropWidth, height: cropHeight } })
+    const imagePacker = image.createImagePacker()
+    const packedBuffer = await imagePacker.packToString(pixelMap, { format: 'image/jpeg', quality: 90 })
+    const file = fs.openSync(dstPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNCATE)
+    fs.writeSync(file.fd, packedBuffer)
+    fs.closeSync(file)
+    pixelMap.release()
+    imagePacker.release()
+    imageSource.release()
+  }
+
+  private async uploadFaceFile(context: Context, cookies: string, puid: string, srcUri: string): Promise<string> {
+    const token = await Sign.GetToken(cookies)
+    const fileName = ChaoxingUtils.generatePhotoName() + '.jpg'
+    const copyFilePath = context.cacheDir + '/' + fileName
+    fs.copyFileSync(srcUri, copyFilePath)
+    const uploadConfig: request.UploadConfig = {
+      url: `https://pan-yz.chaoxing.com/upload?_from=mobilelearn&_token=${token}`,
+      method: 'POST',
+      header: { "Content-Type": "multipart/form-data" },
+      files: [{
+        filename: fileName,
+        type: 'jpg',
+        name: 'file',
+        uri: `internal://cache/${fileName}`
+      }],
+      data: [{ name: 'puid', value: puid }]
+    }
+    const task = await request.uploadFile(context, uploadConfig)
+    return await new Promise<string>((resolve, reject) => {
+      let settled = false
+      task.on('headerReceive', (value) => {
+        if (settled || !(value && value['body'])) {
+          return
+        }
+        try {
+          const bodyObj = JSON.parse(value['body']) as object
+          const objectId = bodyObj['objectId'] as string
+          if (objectId) {
+            settled = true
+            resolve(objectId)
+          }
+        } catch (e) {
+          hilog.error(DOMAIN, TAG, 'Failed to parse upload response', e)
+        }
+      })
+      task.on('fail', () => {
+        if (!settled) {
+          settled = true
+          reject(new Error('人脸照片上传失败'))
+        }
+      })
+      setTimeout(() => {
+        if (!settled) {
+          settled = true
+          reject(new Error('人脸照片上传超时'))
+        }
+      }, 30000)
+    })
+  }
+
+  /** 自动获取每个用户的账号默认人脸（对齐上游 UseProfileImage 流程） */
+  private async useProfileFaces() {
+    if (this.signIdArray.length === 0) {
+      AlertDialog.show({
+        title: '提示',
+        message: '请先选择至少一个用户',
+        confirm: {
+          value: '知道了',
+          action: () => {
+            this.otherUserDialogIsShow = true
+          }
+        }
+      })
+      return
+    }
+    this.isPreparing = true
+    this.resetFaceIds()
+    this.statusText = '正在获取默认人脸...'
+    const context = this.getUIContext().getHostContext() as Context
+    try {
+      for (let index = 0; index < this.signIdArray.length; index++) {
+        try {
+          const userInfo = await this.loadUserById(this.signIdArray[index])
+          const profileObjectId = await Sign.GetProfileFaceObjectId(userInfo.cookies)
+          const rawPath = context.cacheDir + '/' + ChaoxingUtils.generatePhotoName() + '_raw.jpg'
+          await Sign.DownloadFaceImage(profileObjectId, rawPath)
+          const processedPath = context.cacheDir + '/' + ChaoxingUtils.generatePhotoName() + '.jpg'
+          await this.randomizeFaceImage(rawPath, processedPath)
+          const loginInfo = await loginFunction.getUserInfo(userInfo.cookies)
+          const puid = loginInfo.puid ? loginInfo.puid : userInfo.uid.toString()
+          this.faceObjectIdArr[index] = await this.uploadFaceFile(context, userInfo.cookies, puid, processedPath)
+        } catch (e) {
+          hilog.error(DOMAIN, TAG, `Prepare profile face failed: ${(e as Error).message}`)
+          promptAction.showToast({ message: `用户 ${index + 1} 默认人脸获取失败`, duration: 2000 })
+        }
+        this.refreshStatusText(index + 1, this.signIdArray.length)
+      }
+    } finally {
+      this.isPreparing = false
+    }
+  }
+
+  /** 从相册为人脸签到选择照片 */
+  private async pickFaces() {
+    if (this.signIdArray.length === 0) {
+      AlertDialog.show({
+        title: '提示',
+        message: '请先选择至少一个用户',
+        confirm: {
+          value: '知道了',
+          action: () => {
+            this.otherUserDialogIsShow = true
+          }
+        }
+      })
+      return
+    }
+    this.isPreparing = true
+    this.resetFaceIds()
+    const context = this.getUIContext().getHostContext() as Context
+    try {
+      const photoSelectOptions = new picker.PhotoSelectOptions();
+      photoSelectOptions.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE;
+      photoSelectOptions.maxSelectNumber = this.signIdArray.length;
+      const photoViewPicker = new picker.PhotoViewPicker();
+      const res = await photoViewPicker.select(photoSelectOptions)
+      const uriArr = res.photoUris
+      if (!uriArr || uriArr.length === 0) {
+        this.statusText = ''
+        return
+      }
+      this.statusText = `正在上传人脸照片 (0/${this.signIdArray.length})`
+      for (let index = 0; index < this.signIdArray.length; index++) {
+        try {
+          const userInfo = await this.loadUserById(this.signIdArray[index])
+          const loginInfo = await loginFunction.getUserInfo(userInfo.cookies)
+          const puid = loginInfo.puid ? loginInfo.puid : userInfo.uid.toString()
+          const objectId =
+            await this.uploadFaceFile(context, userInfo.cookies, puid, uriArr[index % uriArr.length])
+          this.faceObjectIdArr[index] = objectId
+        } catch (e) {
+          hilog.error(DOMAIN, TAG, `Upload face photo failed: ${(e as Error).message}`)
+          promptAction.showToast({ message: `用户 ${index + 1} 人脸照片上传失败`, duration: 2000 })
+        }
+        this.refreshStatusText(index + 1, this.signIdArray.length)
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Face photo selection failed', JSON.stringify(error))
+      this.statusText = '人脸照片选择失败'
+    } finally {
+      this.isPreparing = false
+    }
+  }
+
+  build() {
+    Column() {
+      // 状态指示点
+      Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center }) {
+        ForEach(this.signIdArray, (signId: number, index: number) => {
+          Circle({ width: 8, height: 8 })
+            .fill(this.faceObjectIdArr[index] ? $r('sys.color.ohos_id_color_connected') :
+              $r('sys.color.ohos_id_color_warning'))
+            .margin(4)
+        })
+      }
+      .padding(10)
+      .width('100%')
+
+      if (this.statusText) {
+        Text(this.statusText)
+          .fontSize(14)
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          .margin({ top: 8, bottom: 8 })
+      }
+
+      Row({ space: 12 }) {
+        Button('自动获取默认人脸')
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor($r('sys.color.ohos_id_color_text_primary_activated'))
+          .backgroundColor($r('sys.color.ohos_id_color_button_normal'))
+          .enabled(!this.isPreparing)
+          .visualEffect(new hdsEffect.HdsEffectBuilder()
+            .pointLight({
+              sourceType: this.profileBtnLight,
+              illuminatedType: hdsEffect.PointLightIlluminatedType.BORDER
+            })
+            .buildEffect())
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
+                this.profileBtnLight = hdsEffect.PointLightSourceType.BRIGHT;
+              })
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
+                this.profileBtnLight = hdsEffect.PointLightSourceType.NONE;
+              })
+            }
+          })
+          .onClick(() => {
+            this.useProfileFaces()
+          })
+        Button('从相册选择')
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor($r('sys.color.ohos_id_color_text_primary_activated'))
+          .backgroundColor($r('sys.color.ohos_id_color_button_normal'))
+          .enabled(!this.isPreparing)
+          .visualEffect(new hdsEffect.HdsEffectBuilder()
+            .pointLight({
+              sourceType: this.albumBtnLight,
+              illuminatedType: hdsEffect.PointLightIlluminatedType.BORDER
+            })
+            .buildEffect())
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
+                this.albumBtnLight = hdsEffect.PointLightSourceType.BRIGHT;
+              })
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
+                this.albumBtnLight = hdsEffect.PointLightSourceType.NONE;
+              })
+            }
+          })
+          .onClick(() => {
+            this.pickFaces()
+          })
+      }
+      .width('100%')
+      .margin({ top: 12 })
+    }
+    .width('100%')
+    .padding(16)
+    .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
+    .borderRadius(16)
   }
 }
 
@@ -537,6 +840,16 @@ export struct SignPage {
   @State DestinationLocationName: string = '获取中...' // 初始状态
   @State hostUser: HostUserInfo | null = null
   @State signBtnLight: hdsEffect.PointLightSourceType = hdsEffect.PointLightSourceType.NONE;
+  // 活动详情（验证码/人脸要求等）
+  @State signDetail: SignDetailResult | null = null
+  @State faceRequired: boolean = false
+  @State faceObjectIdArr: string[] = []
+  // 二维码签到用户自选位置
+  @State qrPosition: QRCodePosition | null = null
+  // 验证码弹窗状态
+  @State captchaSheetShow: boolean = false
+  @State captchaUser: CaptchaUserParam | null = null
+  private captchaResolver: ((validate: string | null) => void) | null = null
 
   // 4. UI Builders
   @Builder
@@ -549,6 +862,10 @@ export struct SignPage {
         .onClick(() => {
           if (user.SignPermission === -1) {
             promptAction.showToast({ message: '该用户不在班级', duration: 1500 })
+            return
+          }
+          if (user.SignPermission === 2) {
+            promptAction.showToast({ message: '该签到对此用户已截止', duration: 1500 })
             return
           }
           if (this.signIdArray.includes(user.id)) {
@@ -725,7 +1042,12 @@ export struct SignPage {
 
   @Builder
   QRCodeCard() {
-    QRCodeLocation({ ActivityId: this.activityInfo?.ActivityId.toString() || '' })
+    QRCodeLocation({
+      ActivityId: this.activityInfo?.ActivityId.toString() || '',
+      onPositionChange: (position: QRCodePosition) => {
+        this.qrPosition = position
+      }
+    })
   }
 
   @Builder
@@ -734,12 +1056,10 @@ export struct SignPage {
       if (this.hostUser) {
         GestureSignComponent({
           activityId: this.activityInfo?.ActivityId || '',
-          courseId: this.activityInfo?.CourseId || '',
-          classId: this.activityInfo?.ClassId || '',
-          cookies: this.hostUser.cookies,
-          uid: this.hostUser.uid,
-          uname: this.hostUser.uname,
-          fid: this.hostUser.fid
+          hostCookies: this.hostUser.cookies,
+          usersProvider: (): Promise<SignUserParam[]> => this.buildSelectedUsers(),
+          requestCaptcha: (cookies: string, uname: string, uid: string): Promise<string | null> =>
+            this.requestCaptcha(cookies, uname, uid)
         })
       } else {
         Text('加载用户信息中...')
@@ -757,12 +1077,10 @@ export struct SignPage {
       if (this.hostUser) {
         PasswordSignComponent({
           activityId: this.activityInfo?.ActivityId || '',
-          courseId: this.activityInfo?.CourseId || '',
-          classId: this.activityInfo?.ClassId || '',
-          cookies: this.hostUser.cookies,
-          uid: this.hostUser.uid,
-          uname: this.hostUser.uname,
-          fid: this.hostUser.fid
+          hostCookies: this.hostUser.cookies,
+          usersProvider: (): Promise<SignUserParam[]> => this.buildSelectedUsers(),
+          requestCaptcha: (cookies: string, uname: string, uid: string): Promise<string | null> =>
+            this.requestCaptcha(cookies, uname, uid)
         })
       } else {
         Text('加载用户信息中...')
@@ -775,8 +1093,22 @@ export struct SignPage {
   }
 
   @Builder
-  CaptchaSheet() {
-    CaptchaComponent({ signIdArray: this.signIdArray })
+  CaptchaSheetBuilder() {
+    if (this.captchaUser) {
+      CaptchaComponent({
+        captchaUser: this.captchaUser,
+        onValidated: (validate: string) => {
+          this.captchaSheetShow = false
+          this.captchaResolver?.(validate)
+          this.captchaResolver = null
+        },
+        onSkip: () => {
+          this.captchaSheetShow = false
+          this.captchaResolver?.(null)
+          this.captchaResolver = null
+        }
+      })
+    }
   }
 
   build() {
@@ -792,10 +1124,23 @@ export struct SignPage {
                 //
                 .padding({ left: 16, top: 20, bottom: 16 })
               Blank()
-              Button()
             }.width('100%')
 
             this.UserSelectionCard()
+
+            if (this.faceRequired && (this.activityInfo?.signType === SignType.NORMAL ||
+              this.activityInfo?.signType === SignType.LOCATION ||
+              this.activityInfo?.signType === SignType.QRCODE)) {
+              Column() {
+                facePicker({
+                  signIdArray: this.signIdArray,
+                  faceObjectIdArr: this.faceObjectIdArr,
+                  otherUserDialogIsShow: this.otherUserDialogIsShow,
+                  otherUser: this.otherUser
+                })
+              }
+              .margin({ left: 16, right: 16, bottom: 12 })
+            }
 
             if (this.activityInfo?.signType === SignType.NORMAL) {
               if (this.ifPhoto) {
@@ -884,6 +1229,11 @@ export struct SignPage {
         }
         .height('100%')
         .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
+        .bindSheet($$this.captchaSheetShow, this.CaptchaSheetBuilder, {
+          title: { title: '签到验证码' },
+          backgroundColor: $r('sys.color.ohos_id_color_dialog_bg'),
+          detents: [SheetSize.MEDIUM, SheetSize.LARGE]
+        })
       } else {
         Column() {
           Text('参数加载失败').fontColor($r('sys.color.ohos_id_color_text_tertiary'))
@@ -925,8 +1275,15 @@ export struct SignPage {
       hilog.error(DOMAIN, TAG, `Failed to initialize host user: ${e.message}`);
     }
 
-    // 检查是否需要拍照
-    this.ifPhoto = await Sign.ifPhoto(cookies, this.activityInfo.ActivityId)
+    // 获取活动完整详情（验证码/人脸/拍照要求）
+    try {
+      this.signDetail = await Sign.GetActiveDetail(cookies, this.activityInfo.ActivityId)
+      this.faceRequired = this.signDetail.openCheckFaceFlag === 1
+      this.ifPhoto = this.signDetail.ifphoto
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `Failed to load active detail: ${e.message}`);
+      this.ifPhoto = false
+    }
 
     // 如果是位置签到，获取位置信息
     if (this.activityInfo.signType === SignType.LOCATION) {
@@ -1020,8 +1377,9 @@ export struct SignPage {
         actInfo.ActivityId,
         actInfo.ClassId,
         actInfo.CourseId,
-        loginInfo.uid,
-        userInfo.cookies
+        loginInfo.puid ? parseInt(loginInfo.puid) : loginInfo.uid,
+        userInfo.cookies,
+        actInfo.ext
       );
 
       return {
@@ -1072,26 +1430,56 @@ export struct SignPage {
     })
   }
 
-  private async SignByQrCode(index: number, dbm: DatabaseManager, hashTable: Map<string, string[]>) {
-    try {
-      const userId = this.signIdArray[index]
-      let userInfo: UserDataAndId
-      let isMainUser = false
-
-      if (userId === 0) {
-        // id 为 0 表示主用户
-        userInfo = await dbm.getUserByPosition(1, true) as UserDataAndId
-        isMainUser = true
-      } else {
-        // 其他用户
-        userInfo = await dbm.getUserByPosition(userId, false) as UserDataAndId
-        isMainUser = false
+  /**
+   * 汇总当前勾选的用户（含 puid），供手势/签到码组件代签使用
+   */
+  private async buildSelectedUsers(): Promise<SignUserParam[]> {
+    const dbManager = DatabaseManager.getInstance()
+    const users: SignUserParam[] = []
+    for (let i = 0; i < this.signIdArray.length; i++) {
+      try {
+        const userInfo = await this.loadUserById(this.signIdArray[i])
+        const loginInfo = await loginFunction.getUserInfo(userInfo.cookies)
+        users.push({
+          cookies: userInfo.cookies,
+          uname: loginInfo.uname,
+          uid: loginInfo.puid ? loginInfo.puid : userInfo.uid.toString(),
+          fid: loginInfo.fid.toString()
+        })
+      } catch (e) {
+        hilog.error(DOMAIN, TAG, `Load selected user failed: ${(e as Error).message}`)
       }
-
-      await this.performSingleSign(userInfo, this.objectidArr[index], hashTable, isMainUser)
-    } catch (e) {
-      hilog.error(DOMAIN, TAG, `User ${this.signIdArray[index]} sign error`, e)
     }
+    return users
+  }
+
+  private async loadUserById(userId: number): Promise<UserDataAndId> {
+    const dbManager = DatabaseManager.getInstance()
+    if (userId === 0) {
+      return await dbManager.getUserByPosition(1, true) as UserDataAndId
+    }
+    return await dbManager.getUserByPosition(userId, false) as UserDataAndId
+  }
+
+  /**
+   * 弹出滑块验证码并等待用户完成校验
+   * @returns validate 值；用户跳过返回 null
+   */
+  private requestCaptcha(userCookies: string, uname: string, uid: string): Promise<string | null> {
+    this.captchaUser = {
+      cookies: userCookies,
+      uname: uname,
+      refererParams: {
+        courseId: this.activityInfo?.CourseId || '',
+        classId: this.activityInfo?.ClassId || '',
+        activePrimaryId: this.activityInfo?.ActivityId || '',
+        uid: uid
+      }
+    }
+    this.captchaSheetShow = true
+    return new Promise<string | null>((resolve) => {
+      this.captchaResolver = resolve
+    })
   }
 
   // 4. 逻辑方法：处理签到动作
@@ -1106,22 +1494,25 @@ export struct SignPage {
       return
     }
 
+    if (this.faceRequired && this.faceObjectIdArr.filter(id => id).length < this.signIdArray.length) {
+      promptAction.showToast({ message: '该签到需要人脸识别，请先为所选用户准备人脸照片' })
+      return
+    }
+
     this.canSign = false
     if (this.activityInfo?.signType === SignType.QRCODE) {
-      const dbManager = DatabaseManager.getInstance()
-      // 获取当前用户信息
-      const currentUser = await dbManager.getUserByPosition(1, true) as UserDataAndId;
-
-      if (!this.activityInfo || !currentUser) {
-        this.canSign = true;
-        return;
+      // 二维码签到：对齐上游 lat/lng 固定 -1，自选位置以 location JSON 提交
+      this.commonQueryParams.latitude = '-1'
+      this.commonQueryParams.longitude = '-1'
+      this.commonQueryParams.address = ''
+      if (this.qrPosition) {
+        const position = this.qrPosition
+        this.commonQueryParams.location =
+          `{"result":1,"latitude":"${position.latitude.toFixed(6)}","longitude":"${position.longitude.toFixed(6)}","address":"${position.address}","mockData":"{\\"strategy\\":0,\\"probability\\":-1}"}`
+      } else {
+        this.commonQueryParams.location = ''
       }
 
-      const cookies = currentUser.cookies;
-      let loc = await Sign.GetLocationSignInfo(cookies, this.activityInfo.ActivityId)
-      this.commonQueryParams.address = loc['locationText'] as string;
-      this.commonQueryParams.longitude = (loc['longitude'] as number).toString();
-      this.commonQueryParams.latitude = (loc['latitude'] as number).toString();
       let options: scanBarcode.ScanOptions = {
         scanTypes: [scanCore.ScanType.ALL],
         enableMultiMode: true,
@@ -1152,23 +1543,19 @@ export struct SignPage {
                 // 遍历所有选中的用户进行签到
                 for (let i = 0; i < this.signIdArray.length; i++) {
                   try {
-                    const userId = this.signIdArray[i]
-                    let userInfo: UserDataAndId
-                    let isMainUser = false
-
-                    if (userId === 0) {
-                      // id 为 0 表示主用户
-                      userInfo = await dbManager.getUserByPosition(1, true) as UserDataAndId
-                      isMainUser = true
-                    } else {
-                      // 其他用户
-                      userInfo = await dbManager.getUserByPosition(userId, false) as UserDataAndId
-                      isMainUser = false
+                    const userInfo = await this.loadUserById(this.signIdArray[i])
+                    const outcome =
+                      await this.performSingleSign(userInfo, this.objectidArr[i], this.faceObjectIdArr[i] || '',
+                        hashTable)
+                    if (outcome.kind === 'qrcodeExpired') {
+                      promptAction.showToast({ message: '签到二维码已过期，请重新扫码', duration: 2000 })
+                      break
                     }
-
-                    await this.performSingleSign(userInfo, this.objectidArr[i], hashTable, isMainUser)
                   } catch (e) {
                     hilog.error(DOMAIN, TAG, `User ${this.signIdArray[i]} sign error`, e)
+                  }
+                  if (i < this.signIdArray.length - 1) {
+                    await new Promise<void>((resolve) => setTimeout(resolve, 200))
                   }
                 }
 
@@ -1206,31 +1593,18 @@ export struct SignPage {
 
     // 非扫码签到的正常流程
     const hashTable = new Map<string, string[]>();
-    const dbManager = DatabaseManager.getInstance()
 
     // 遍历所有选中的用户进行签到
     for (let i = 0; i < this.signIdArray.length; i++) {
       try {
-        const userId = this.signIdArray[i]
-        let userInfo: UserDataAndId
-        let isMainUser = false
-
-        if (userId === 0) {
-          // id 为 0 表示主用户
-          userInfo = await dbManager.getUserByPosition(1, true) as UserDataAndId
-          isMainUser = true
-        } else {
-          // 其他用户
-          userInfo = await dbManager.getUserByPosition(userId, false) as UserDataAndId
-          isMainUser = false
-        }
-
-        let Captcha = await this.performSingleSign(userInfo, this.objectidArr[i], hashTable, isMainUser)
-        if (Captcha) {
-          let a = 0
-        }
+        const userInfo = await this.loadUserById(this.signIdArray[i])
+        await this.performSingleSign(userInfo, this.objectidArr[i], this.faceObjectIdArr[i] || '', hashTable)
       } catch (e) {
         hilog.error(DOMAIN, TAG, `User ${this.signIdArray[i]} sign error`, e)
+      }
+      // 对齐上游代签用户间隔
+      if (i < this.signIdArray.length - 1) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 200))
       }
     }
 
@@ -1238,44 +1612,68 @@ export struct SignPage {
     this.canSign = true
   }
 
-  private async performSingleSign(userInfo: UserDataAndId, photoObjId: string | undefined, map: Map<string, string[]>,
-    isMainUser: boolean): Promise<boolean> {
+  private async performSingleSign(userInfo: UserDataAndId, photoObjId: string | undefined, faceObjId: string,
+    map: Map<string, string[]>): Promise<SignOutcome> {
     const loginInfo = await loginFunction.getUserInfo(userInfo.cookies)
+    const uidForSign = loginInfo.puid ? loginInfo.puid : userInfo.uid.toString()
 
     if (this.ifPhoto && photoObjId) {
       this.commonQueryParams.objectId = photoObjId
     } else {
       this.commonQueryParams.objectId = undefined
     }
+
+    // 人脸识别参数（对齐上游 addFaceRecognitionParameter）
+    if (faceObjId) {
+      this.commonQueryParams.courseId = this.activityInfo?.CourseId || ''
+      this.commonQueryParams.currentFaceId = faceObjId
+      try {
+        this.commonQueryParams.faceEnc = await Sign.CheckFaceResultAndGetEnc(userInfo.cookies,
+          this.activityInfo?.ActivityId || '', faceObjId, loginInfo.clientId)
+      } catch (e) {
+        hilog.error(DOMAIN, TAG, `Get faceEnc failed: ${(e as Error).message}`)
+        this.commonQueryParams.courseId = ''
+        this.commonQueryParams.currentFaceId = ''
+        this.commonQueryParams.faceEnc = ''
+      }
+    } else {
+      this.commonQueryParams.courseId = ''
+      this.commonQueryParams.currentFaceId = ''
+      this.commonQueryParams.faceEnc = ''
+    }
+
     this.userQueryParams = {
-      uid: userInfo.uid.toString(),
+      uid: uidForSign,
       name: loginInfo.uname,
       fid: loginInfo.fid.toString()
     }
 
-    let result = await Sign.DoSignInV2(userInfo.cookies, this.commonQueryParams, this.userQueryParams)
-    if (result.includes('validate')) {
-      return true
+    let raw = await Sign.DoSignInV2(userInfo.cookies, this.commonQueryParams, this.userQueryParams)
+    let outcome = parseSignResult(raw)
+
+    // 需要验证码：弹窗完成后带 validate 重新签到（对齐上游 signWithCaptcha）
+    if (outcome.needCaptcha) {
+      const validate = await this.requestCaptcha(userInfo.cookies, loginInfo.uname, uidForSign)
+      if (validate) {
+        raw = await Sign.DoSignInV2(userInfo.cookies, this.commonQueryParams, this.userQueryParams, validate)
+        outcome = parseSignResult(raw)
+      } else {
+        outcome = { kind: 'error', message: '验证码校验被跳过', needCaptcha: false }
+      }
     }
 
-    if (typeof result === 'string' && (result.includes('<html') || result.includes('500 Internal Server Error'))) {
-      result = '服务端错误 (500)';
-    }
-
-    if (map.has(result)) {
-      map.get(result)!.push(loginInfo.uname);
+    if (map.has(outcome.message)) {
+      map.get(outcome.message)!.push(loginInfo.uname);
     } else {
-      map.set(result, [loginInfo.uname]);
+      map.set(outcome.message, [loginInfo.uname]);
     }
-    return false
+    return outcome
   }
 
   private showSignResult(hashTable: Map<string, string[]>) {
     let message = '';
-    let isSuccess = false;
     hashTable.forEach((names, result) => {
-      if (result === 'success') {
-        isSuccess = true;
+      if (result === '签到成功') {
         message += `✅ 成功: ${names.join(', ')}\n`
       } else if (result === '您已签到过了') {
         message += `⚠️ 已签: ${names.join(', ')}\n`

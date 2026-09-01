@@ -102,6 +102,27 @@ export class ChaoXingApi {
    * 签退
    */
   static readonly URL_SIGN_OUT = new BuildableUrl('https://mobilelearn.chaoxing.com/newsign/signOut')
+  /**
+   * 签到行为分析（preSign 后调用）
+   */
+  static readonly URL_ANALYSIS =
+    new BuildableUrl('https://mobilelearn.chaoxing.com/pptSign/analysis?vs=1&DB_STRATEGY=RANDOM')
+  static readonly URL_AFTER_ANALYSIS2 =
+    new BuildableUrl('https://mobilelearn.chaoxing.com/pptSign/analysis2?DB_STRATEGY=RANDOM')
+  /**
+   * 人脸识别：校验人脸结果并获取 faceEnc
+   */
+  static readonly URL_CHECK_FACE_RESULT =
+    new BuildableUrl('https://mobilelearn.chaoxing.com/pptSign/check-face-result?DB_STRATEGY=PRIMARY_KEY&STRATEGY_PARA=activeId')
+  /**
+   * 人脸识别：获取账号默认人脸照片 objectId
+   */
+  static readonly URL_GET_PROFILE_FACE_IMAGE =
+    new BuildableUrl('https://mobilelearn.chaoxing.com/v2/apis/sign/collectionfilephotoEnc?DB_STRATEGY=DEFAULT')
+  /**
+   * 人脸识别：按 objectId 下载云盘人脸照片
+   */
+  static readonly URL_FACE_SHARED_IMAGE = 'https://p.cldisk.com/star4/'
 }
 
 export class InternalPath {

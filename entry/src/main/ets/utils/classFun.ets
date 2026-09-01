@@ -1,4 +1,5 @@
 import { http } from '@kit.NetworkKit';
+import { JSON } from '@kit.ArkTS';
 import { ChaoXingApi} from './PublicAPI'
 import { DatabaseManager } from './DataBase';
 import { ChaoxingUtils } from './utils';
@@ -70,7 +71,7 @@ export class CourseAndActivity {
     }
   }
 
-  static async getActivityList(cookies: string, classId: string, courseId: string): Promise<ActivityItem[]|null> {
+  static async getActivityList(cookies: string, classId: string, courseId: string): Promise<ActivityListResult | null> {
     const httpRequest = http.createHttp();
     const url=ChaoxingUtils.buildUrl(ChaoXingApi.URL_GET_ACTIVITY_LIST,
       {
@@ -87,8 +88,13 @@ export class CourseAndActivity {
           }
         })
       const ActivityMessage = JSON.parse(result.result.toString()) as object
-      const ActivityList = ActivityMessage?.['data']?.['activeList'] as ActivityItem[]
-      return ActivityList
+      const data = ActivityMessage?.['data'] as object
+      const ActivityList = data?.['activeList'] as ActivityItem[]
+      const ext = data?.['ext'] as object
+      return {
+        ext: ext ? JSON.stringify(ext) : '',
+        activities: ActivityList
+      }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to get activity list: ${error.message}`);
       return null
@@ -96,6 +102,12 @@ export class CourseAndActivity {
       httpRequest.destroy()
     }
   }
+}
+
+export interface ActivityListResult {
+  /** 活动列表接口返回的 data.ext 原样字符串，preSign 时需要 */
+  ext: string;
+  activities: ActivityItem[];
 }
 
 export interface ActivityItem {

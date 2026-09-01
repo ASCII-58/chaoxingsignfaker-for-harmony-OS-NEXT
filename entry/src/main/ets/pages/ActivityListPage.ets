@@ -16,6 +16,8 @@ export interface ActivityInfo {
   CourseId: string;
   ClassId: string;
   signType: SignType
+  /** 活动列表返回的 data.ext，preSign 时使用 */
+  ext: string
 }
 
 export enum SignType {
@@ -82,6 +84,7 @@ export struct ActivityListPage {
   @State classId: string = ''; // 班级id
   @State name: string = '';
   @State ActivityList: ActivityItem[] | null = null
+  @State activityExt: string = ''
 
   build() {
     NavDestination() {
@@ -147,7 +150,8 @@ export struct ActivityListPage {
                   ActivityId: Activity.id,
                   CourseId: this.courseId,
                   ClassId: this.classId,
-                  signType: Activity.otherId.toString() as SignType
+                  signType: Activity.otherId.toString() as SignType,
+                  ext: this.activityExt
                 }
                 this.pathInfos.pushPath({ name: 'SignerPage', param: activityInfo })
               })
@@ -180,7 +184,9 @@ export struct ActivityListPage {
           const cookies = (await dbManager.getUserByPosition(1, true))?.cookies
           if (cookies) {
             hilog.debug(DOMAIN, TAG, 'Loading activity list');
-            this.ActivityList = await CourseAndActivity.getActivityList(cookies, this.classId, this.courseId);
+            const activityResult = await CourseAndActivity.getActivityList(cookies, this.classId, this.courseId);
+            this.ActivityList = activityResult ? activityResult.activities : null;
+            this.activityExt = activityResult ? activityResult.ext : '';
             hilog.debug(DOMAIN, TAG, `Activity list loaded: ${this.ActivityList ? 'success' : 'failed'}`);
             if (this.ActivityList) {
               this.ActivityList.forEach(element => {

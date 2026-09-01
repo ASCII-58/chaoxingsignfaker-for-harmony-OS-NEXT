@@ -25,7 +25,8 @@ export interface UserInfo {
   pic: string,
   uid: number,
   fid: string,
-  puid:string
+  puid:string,
+  clientId: string
 }
 
 export interface LoginResult {
@@ -161,7 +162,8 @@ export class loginFunction {
           'pic': '',
           'uid': 0,
           'fid': '',
-          'puid':''
+          'puid':'',
+          'clientId': ''
         }
       } else {
         const JsonResult = JSON.parse(result.result as string) as object;
@@ -171,13 +173,15 @@ export class loginFunction {
         const uid: number = (Json as object)?.['uid'] || 0
         const fid: string = (Json as object)?.['fid'] || ''
         const puid: string = (Json as object)?.['puid'] || ''
+        const clientId: string = (Json as object)?.['clientId'] || ''
         const userInfo: UserInfo = {
           'msg': (uname && pic) ? 'successful' : 'fetch error',
           'uname': uname,
           'pic': pic,
           'uid': uid,
           'fid': fid,
-          'puid':puid
+          'puid':puid,
+          'clientId': clientId
         }
 
         // Cache the successful result using hashed key
@@ -199,7 +203,8 @@ export class loginFunction {
         'pic': '',
         uid: 0,
         fid: '',
-        puid:''
+        puid:'',
+        clientId: ''
       }
     } finally {
       httpRequest.destroy()

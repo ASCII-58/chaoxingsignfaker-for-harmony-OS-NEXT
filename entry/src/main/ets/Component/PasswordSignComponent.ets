@@ -1,24 +1,25 @@
-import { Sign, SignInfoResult, CommonSignParams, UserQueryObject } from '../utils/sign';
+import { Sign, SignInfoResult, CommonSignParams, parseSignResult, SignUserParam, UserQueryObject } from '../utils/sign';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction } from '@kit.ArkUI';
 import { hdsEffect } from '@kit.UIDesignKit';
 
 const TAG = 'PasswordSignComponent';
 const DOMAIN = 0x000A;
+const NEXT_SIGN_INTERVAL_MS = 200; // 对齐上游：代签用户之间的间隔
 
 /**
- * 签到码签到组件
+ * 签到码签到组件（支持全部勾选用户代签）
  */
 @Component
 export struct PasswordSignComponent {
   @Prop activityId: string;
-  @Prop courseId: string;
-  @Prop classId: string;
-  @Prop cookies: string;
-  @Prop uid: number;
-  @Prop uname: string;
-  @Prop fid: number;
-  
+  /** 主用户 Cookie，用于加载签到详情与校验签到码 */
+  @Prop hostCookies: string;
+  /** 返回当前勾选的用户列表 */
+  usersProvider: () => Promise<SignUserParam[]>
+  /** 需要验证码时弹出验证码并等待 validate，跳过返回 null */
+  requestCaptcha?: (cookies: string, uname: string, uid: string) => Promise<string | null>
+
   @State signInfo: SignInfoResult | null = null;
   @State isLoading: boolean = true;
   @State errorMsg: string = '';
@@ -38,7 +39,7 @@ export struct PasswordSignComponent {
   async loadSignInfo() {
     try {
       this.isLoading = true;
-      this.signInfo = await Sign.GetSignInfo(this.cookies, this.activityId);
+      this.signInfo = await Sign.GetSignInfo(this.hostCookies, this.activityId);
       this.numberCount = this.signInfo.numberCount || 4;
       hilog.info(DOMAIN, TAG, `Sign info loaded, code length: ${this.numberCount}`);
     } catch (e) {
@@ -60,48 +61,70 @@ export struct PasswordSignComponent {
       return;
     }
 
+    const users = await this.usersProvider();
+    if (users.length === 0) {
+      promptAction.showToast({ message: '请先选择用户' });
+      return;
+    }
+
     try {
       this.isLoading = true;
-      
-      const isCorrect = await Sign.CheckSignCode(this.cookies, this.activityId, this.signCode);
-      
+
+      const isCorrect = await Sign.CheckSignCode(this.hostCookies, this.activityId, this.signCode);
+
       if (!isCorrect) {
         this.signResultMsg = '签到码错误，请重新输入';
         this.signCode = '';
         return;
       }
 
-      const queryParams = Sign.buildSignQueryParams(
-        this.activityId,
-        this.uid,
-        this.uname,
-        this.fid
-      );
       const commonQueryParams: CommonSignParams = {
-        activeId: queryParams.activeId,
-        latitude: queryParams.latitude,
-        longitude: queryParams.longitude,
+        activeId: this.activityId,
+        latitude: '',
+        longitude: '',
         address: '',
         enc: '',
         signCode: this.signCode
       };
-      const userQueryParams: UserQueryObject = {
-        uid: queryParams.uid.toString(),
-        name: queryParams.name,
-        fid: queryParams.fid.toString()
-      };
-      const result = await Sign.DoSignInV2(this.cookies, commonQueryParams, userQueryParams);
-      
-      if (result === 'success') {
-        this.isSignSuccess = true;
-        this.signResultMsg = '签到成功！';
+
+      const results: string[] = [];
+      let hasSuccess = false;
+      for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        try {
+          const userQueryParams: UserQueryObject = {
+            uid: user.uid,
+            name: user.uname,
+            fid: user.fid
+          };
+          let raw = await Sign.DoSignInV2(user.cookies, commonQueryParams, userQueryParams);
+          let outcome = parseSignResult(raw);
+          if (outcome.needCaptcha && this.requestCaptcha) {
+            const validate = await this.requestCaptcha(user.cookies, user.uname, user.uid);
+            if (validate) {
+              raw = await Sign.DoSignInV2(user.cookies, commonQueryParams, userQueryParams, validate);
+              outcome = parseSignResult(raw);
+            } else {
+              outcome = { kind: 'error', message: '验证码校验被跳过', needCaptcha: false };
+            }
+          }
+          if (outcome.kind === 'success') {
+            hasSuccess = true;
+          }
+          results.push(`${user.uname}: ${outcome.message}`);
+        } catch (e) {
+          hilog.error(DOMAIN, TAG, `User ${user.uname} sign failed: ${(e as Error).message}`);
+          results.push(`${user.uname}: 签到异常`);
+        }
+        if (i < users.length - 1) {
+          await new Promise<void>((resolve) => setTimeout(resolve, NEXT_SIGN_INTERVAL_MS));
+        }
+      }
+
+      this.isSignSuccess = hasSuccess;
+      this.signResultMsg = results.join('\n');
+      if (hasSuccess) {
         promptAction.showToast({ message: '签到成功' });
-      } else if (result === '您已签到过了') {
-        this.signResultMsg = '您已签到过了';
-      } else if (result === 'validate') {
-        this.signResultMsg = '需要验证码，请稍后重试';
-      } else {
-        this.signResultMsg = `签到失败: ${result}`;
       }
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Password sign failed: ${e.message}`);
@@ -117,7 +140,7 @@ export struct PasswordSignComponent {
         promptAction.showToast({ message: '获取信息失败' });
         return;
       }
-      const result = await Sign.DoSignOut(this.cookies, this.signInfo.signInId, this.signInfo.signOutId);
+      const result = await Sign.DoSignOut(this.hostCookies, this.signInfo.signInId, this.signInfo.signOutId);
       promptAction.showToast({ message: '签退成功' });
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Sign out failed: ${e.message}`);
@@ -145,12 +168,12 @@ export struct PasswordSignComponent {
             .margin({ top: 20, bottom: 10 })
 
           if (this.numberCount > 0) {
-            Text(`请输入${this.numberCount}位签到码`)
+            Text(`请输入${this.numberCount}位签到码（为所有勾选用户代签）`)
               .fontSize(14)
               .fontColor($r('sys.color.ohos_id_color_text_secondary'))
               .margin({ bottom: 30 })
           } else {
-            Text('请输入签到码')
+            Text('请输入签到码（为所有勾选用户代签）')
               .fontSize(14)
               .fontColor($r('sys.color.ohos_id_color_text_secondary'))
               .margin({ bottom: 30 })
@@ -174,9 +197,9 @@ export struct PasswordSignComponent {
           // 结果信息
           if (this.signResultMsg) {
             Text(this.signResultMsg)
-              .fontSize(16)
-              .fontColor(this.isSignSuccess ? 
-                $r('sys.color.ohos_id_color_emphasize') : 
+              .fontSize(14)
+              .fontColor(this.isSignSuccess ?
+                $r('sys.color.ohos_id_color_emphasize') :
                 $r('sys.color.ohos_id_color_warning'))
               .margin({ bottom: 20 })
           }
@@ -209,18 +232,18 @@ export struct PasswordSignComponent {
             .margin({ bottom: 20 })
 
           // 签退按钮
-          if (this.signInfo && this.signInfo.signOutId > 0 && 
+          if (this.signInfo && this.signInfo.signOutId > 0 &&
               this.signInfo.signOutPublishTimeStamp > 0 && this.isSignSuccess) {
             Column() {
               Divider()
                 .width(200)
                 .margin({ top: 20, bottom: 20 })
-              
+
               Text('签退可用')
                 .fontSize(14)
                 .fontColor($r('sys.color.ohos_id_color_text_secondary'))
                 .margin({ bottom: 10 })
-              
+
               Button('签退')
                 .width(150)
                 .fontColor($r('app.color.text_on_primary'))
