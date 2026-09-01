@@ -1,5 +1,5 @@
 import { ActivityInfo, SignType } from './ActivityListPage';
-import { CommonSignParams, parseSignResult, Sign, SignDetailResult, SignOutcome, SignUserParam, UserQueryObject } from '../utils/sign';
+import { CommonSignParams, parseSignResult, Sign, SignDetailResult, SignOutcome, UserQueryObject } from '../utils/sign';
 import { JSON } from '@kit.ArkTS';
 import { FunctionalButton, functionalButtonComponentManager } from '@kit.ScenarioFusionKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -827,11 +827,6 @@ export struct SignPage {
     address: '',
     enc: ''
   }
-  @State userQueryParams: UserQueryObject = {
-    uid: '',
-    fid: '',
-    name: ''
-  }
   @State otherUser: Array<userMenu> = []
   @State signIdArray: Array<number> = []
   @State ifPhoto: boolean = false
@@ -850,6 +845,8 @@ export struct SignPage {
   @State captchaSheetShow: boolean = false
   @State captchaUser: CaptchaUserParam | null = null
   private captchaResolver: ((validate: string | null) => void) | null = null
+  // 手势/签到码组件校验通过后回传的码
+  @State pendingSignCode: string = ''
 
   // 4. UI Builders
   @Builder
@@ -1057,9 +1054,9 @@ export struct SignPage {
         GestureSignComponent({
           activityId: this.activityInfo?.ActivityId || '',
           hostCookies: this.hostUser.cookies,
-          usersProvider: (): Promise<SignUserParam[]> => this.buildSelectedUsers(),
-          requestCaptcha: (cookies: string, uname: string, uid: string): Promise<string | null> =>
-            this.requestCaptcha(cookies, uname, uid)
+          onSignCode: (code: string) => {
+            this.pendingSignCode = code
+          }
         })
       } else {
         Text('加载用户信息中...')
@@ -1078,9 +1075,10 @@ export struct SignPage {
         PasswordSignComponent({
           activityId: this.activityInfo?.ActivityId || '',
           hostCookies: this.hostUser.cookies,
-          usersProvider: (): Promise<SignUserParam[]> => this.buildSelectedUsers(),
-          requestCaptcha: (cookies: string, uname: string, uid: string): Promise<string | null> =>
-            this.requestCaptcha(cookies, uname, uid)
+          codeLength: this.signDetail?.numberCount || 0,
+          onSignCode: (code: string) => {
+            this.pendingSignCode = code
+          }
         })
       } else {
         Text('加载用户信息中...')
@@ -1189,18 +1187,37 @@ export struct SignPage {
           .width('100%')
           .layoutWeight(1)
 
-          if (this.activityInfo?.signType !== SignType.GESTURE &&
-            this.activityInfo?.signType !== SignType.PASSWORD) {
-            Column() {
+          Column() {
+            if (this.prepareHint() !== '') {
+              Text(this.prepareHint())
+                .fontSize(13)
+                .fontColor($r('app.color.unsignable'))
+                .margin({ bottom: 8 })
+            }
+            Row({ space: 12 }) {
+              if (this.signOutAvailable()) {
+                Button('签退')
+                  .layoutWeight(1)
+                  .height(48)
+                  .fontSize(18)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.text_on_primary'))
+                  .backgroundColor($r('app.color.unsignable'))
+                  .borderRadius(24)
+                  .enabled(this.canSign)
+                  .onClick(() => {
+                    this.executeSignOutFlow()
+                  })
+              }
               Button('立即签到')
-                .width('90%')
+                .layoutWeight(1)
                 .height(48)
                 .fontSize(18)
                 .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.text_on_primary'))
                 .backgroundColor($r('app.color.class_button'))
                 .borderRadius(24)
-                .enabled(this.canSign)
+                .enabled(this.canSign && this.prepareHint() === '')
                 .visualEffect(new hdsEffect.HdsEffectBuilder()
                   .pointLight({
                     sourceType: this.signBtnLight,
@@ -1222,10 +1239,11 @@ export struct SignPage {
                   this.showSignConfirmDialog()
                 })
             }
-            .width('100%')
-            .padding({ top: 8, bottom: 16 })
-            .backgroundColor($r('sys.color.ohos_id_color_background'))
+            .width('90%')
           }
+          .width('100%')
+          .padding({ top: 8, bottom: 16 })
+          .backgroundColor($r('sys.color.ohos_id_color_background'))
         }
         .height('100%')
         .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
@@ -1430,29 +1448,6 @@ export struct SignPage {
     })
   }
 
-  /**
-   * 汇总当前勾选的用户（含 puid），供手势/签到码组件代签使用
-   */
-  private async buildSelectedUsers(): Promise<SignUserParam[]> {
-    const dbManager = DatabaseManager.getInstance()
-    const users: SignUserParam[] = []
-    for (let i = 0; i < this.signIdArray.length; i++) {
-      try {
-        const userInfo = await this.loadUserById(this.signIdArray[i])
-        const loginInfo = await loginFunction.getUserInfo(userInfo.cookies)
-        users.push({
-          cookies: userInfo.cookies,
-          uname: loginInfo.uname,
-          uid: loginInfo.puid ? loginInfo.puid : userInfo.uid.toString(),
-          fid: loginInfo.fid.toString()
-        })
-      } catch (e) {
-        hilog.error(DOMAIN, TAG, `Load selected user failed: ${(e as Error).message}`)
-      }
-    }
-    return users
-  }
-
   private async loadUserById(userId: number): Promise<UserDataAndId> {
     const dbManager = DatabaseManager.getInstance()
     if (userId === 0) {
@@ -1482,20 +1477,62 @@ export struct SignPage {
     })
   }
 
+  /**
+   * 就绪检查：返回就绪提示文案，空串表示可以签到
+   */
+  private prepareHint(): string {
+    if (this.signIdArray.length === 0) {
+      return '请先选择签到用户'
+    }
+    const selected = this.signIdArray.length
+    if (this.ifPhoto) {
+      const uploaded = this.objectidArr.filter(id => id).length
+      if (uploaded < selected) {
+        return `等待签到图片上传 (${uploaded}/${selected})`
+      }
+    }
+    if (this.faceRequired) {
+      const faces = this.faceObjectIdArr.filter(id => id).length
+      if (faces < selected) {
+        return `该签到需要人脸识别，请先为所选用户准备人脸照片 (${faces}/${selected})`
+      }
+    }
+    if (this.activityInfo?.signType === SignType.LOCATION && !this.commonQueryParams.latitude) {
+      return '请先选择签到位置'
+    }
+    if (this.activityInfo?.signType === SignType.GESTURE && !this.pendingSignCode) {
+      return '请先绘制并校验手势'
+    }
+    if (this.activityInfo?.signType === SignType.PASSWORD && !this.pendingSignCode) {
+      return '请先输入并校验签到码'
+    }
+    return ''
+  }
+
+  private signOutAvailable(): boolean {
+    return this.signDetail !== null && this.signDetail.signOutId > 0 &&
+      this.signDetail.signOutPublishTimeStamp > 0
+  }
+
+  /**
+   * 构造本轮签到的基础公共参数（签到过程中不可变）
+   */
+  private buildBaseParams(signCode: string, enc: string): CommonSignParams {
+    return {
+      activeId: this.activityInfo?.ActivityId || '',
+      latitude: this.commonQueryParams.latitude,
+      longitude: this.commonQueryParams.longitude,
+      address: this.commonQueryParams.address,
+      enc: enc,
+      signCode: signCode
+    }
+  }
+
   // 4. 逻辑方法：处理签到动作
   private async handleSignAction() {
-    if (this.objectidArr.filter(id => id).length < this.signIdArray.length && this.ifPhoto) {
-      promptAction.showToast({ message: '请等待图片上传完成' })
-      return
-    }
-
-    if (this.signIdArray.length === 0) {
-      promptAction.showToast({ message: '请选择至少一个用户' })
-      return
-    }
-
-    if (this.faceRequired && this.faceObjectIdArr.filter(id => id).length < this.signIdArray.length) {
-      promptAction.showToast({ message: '该签到需要人脸识别，请先为所选用户准备人脸照片' })
+    const hint = this.prepareHint()
+    if (hint) {
+      promptAction.showToast({ message: hint })
       return
     }
 
@@ -1533,38 +1570,15 @@ export struct SignPage {
                   return;
                 }
 
-                this.commonQueryParams.enc = parse['enc']
+                const enc = parse['enc']
+                hilog.info(DOMAIN, TAG, `Scan successful, enc: ${enc}`);
 
-                hilog.info(DOMAIN, TAG,
-                  `Scan successful, enc: ${this.commonQueryParams.enc}`);
-
-                // 扫码成功后，执行签到
-                const hashTable = new Map<string, string[]>();
-                // 遍历所有选中的用户进行签到
-                for (let i = 0; i < this.signIdArray.length; i++) {
-                  try {
-                    const userInfo = await this.loadUserById(this.signIdArray[i])
-                    const outcome =
-                      await this.performSingleSign(userInfo, this.objectidArr[i], this.faceObjectIdArr[i] || '',
-                        hashTable)
-                    if (outcome.kind === 'qrcodeExpired') {
-                      promptAction.showToast({ message: '签到二维码已过期，请重新扫码', duration: 2000 })
-                      break
-                    }
-                  } catch (e) {
-                    hilog.error(DOMAIN, TAG, `User ${this.signIdArray[i]} sign error`, e)
-                  }
-                  if (i < this.signIdArray.length - 1) {
-                    await new Promise<void>((resolve) => setTimeout(resolve, 200))
-                  }
-                }
-
-                this.showSignResult(hashTable);
+                // 扫码成功后，执行统一签到流程
+                await this.executeSignFlow('', enc)
               } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 hilog.error(DOMAIN, TAG, `Failed to process scan result: ${errorMsg}`);
                 promptAction.showToast({ message: '处理扫码结果失败' });
-              } finally {
                 this.canSign = true;
               }
             })
@@ -1591,94 +1605,179 @@ export struct SignPage {
       }
     }
 
-    // 非扫码签到的正常流程
-    const hashTable = new Map<string, string[]>();
+    // 非扫码签到：统一签到流程
+    await this.executeSignFlow(this.pendingSignCode, this.commonQueryParams.enc)
+  }
 
-    // 遍历所有选中的用户进行签到
-    for (let i = 0; i < this.signIdArray.length; i++) {
+  /**
+   * 统一签到流程：所有签到类型共用同一条执行路径
+   * 逐个用户签到（间隔 200ms，对齐上游），支持验证码与人脸，二维码过期中断剩余用户
+   */
+  private async executeSignFlow(signCode: string, enc: string): Promise<void> {
+    const hashTable = new Map<string, string[]>()
+    const baseParams = this.buildBaseParams(signCode, enc)
+    // 快照勾选列表，避免签到过程中修改勾选导致错位
+    const targetIds = this.signIdArray.slice()
+
+    for (let i = 0; i < targetIds.length; i++) {
       try {
-        const userInfo = await this.loadUserById(this.signIdArray[i])
-        await this.performSingleSign(userInfo, this.objectidArr[i], this.faceObjectIdArr[i] || '', hashTable)
+        const userInfo = await this.loadUserById(targetIds[i])
+        const outcome =
+          await this.signSingleUser(userInfo, this.objectidArr[i] || '', this.faceObjectIdArr[i] || '',
+            baseParams, hashTable)
+        if (outcome.kind === 'qrcodeExpired') {
+          promptAction.showToast({ message: '签到二维码已过期，请重新扫码', duration: 2000 })
+          break
+        }
       } catch (e) {
-        hilog.error(DOMAIN, TAG, `User ${this.signIdArray[i]} sign error`, e)
+        hilog.error(DOMAIN, TAG, `User ${targetIds[i]} sign error`, e)
       }
       // 对齐上游代签用户间隔
-      if (i < this.signIdArray.length - 1) {
+      if (i < targetIds.length - 1) {
         await new Promise<void>((resolve) => setTimeout(resolve, 200))
       }
     }
 
     this.showSignResult(hashTable);
+    await this.refreshUserPermissions()
     this.canSign = true
   }
 
-  private async performSingleSign(userInfo: UserDataAndId, photoObjId: string | undefined, faceObjId: string,
-    map: Map<string, string[]>): Promise<SignOutcome> {
+  /**
+   * 为单个用户执行签到（每个用户使用独立的参数对象，避免共享可变状态）
+   */
+  private async signSingleUser(userInfo: UserDataAndId, photoObjId: string, faceObjId: string,
+    baseParams: CommonSignParams, map: Map<string, string[]>): Promise<SignOutcome> {
     const loginInfo = await loginFunction.getUserInfo(userInfo.cookies)
     const uidForSign = loginInfo.puid ? loginInfo.puid : userInfo.uid.toString()
 
-    if (this.ifPhoto && photoObjId) {
-      this.commonQueryParams.objectId = photoObjId
-    } else {
-      this.commonQueryParams.objectId = undefined
+    const params: CommonSignParams = {
+      activeId: baseParams.activeId,
+      latitude: baseParams.latitude,
+      longitude: baseParams.longitude,
+      address: baseParams.address,
+      enc: baseParams.enc,
+      signCode: baseParams.signCode
     }
-
+    if (this.ifPhoto && photoObjId) {
+      params.objectId = photoObjId
+    }
     // 人脸识别参数（对齐上游 addFaceRecognitionParameter）
     if (faceObjId) {
-      this.commonQueryParams.courseId = this.activityInfo?.CourseId || ''
-      this.commonQueryParams.currentFaceId = faceObjId
+      params.courseId = this.activityInfo?.CourseId || ''
+      params.currentFaceId = faceObjId
       try {
-        this.commonQueryParams.faceEnc = await Sign.CheckFaceResultAndGetEnc(userInfo.cookies,
+        params.faceEnc = await Sign.CheckFaceResultAndGetEnc(userInfo.cookies,
           this.activityInfo?.ActivityId || '', faceObjId, loginInfo.clientId)
       } catch (e) {
         hilog.error(DOMAIN, TAG, `Get faceEnc failed: ${(e as Error).message}`)
-        this.commonQueryParams.courseId = ''
-        this.commonQueryParams.currentFaceId = ''
-        this.commonQueryParams.faceEnc = ''
+        params.courseId = ''
+        params.currentFaceId = ''
+        params.faceEnc = ''
       }
-    } else {
-      this.commonQueryParams.courseId = ''
-      this.commonQueryParams.currentFaceId = ''
-      this.commonQueryParams.faceEnc = ''
     }
 
-    this.userQueryParams = {
+    const userQueryParams: UserQueryObject = {
       uid: uidForSign,
       name: loginInfo.uname,
       fid: loginInfo.fid.toString()
     }
 
-    let raw = await Sign.DoSignInV2(userInfo.cookies, this.commonQueryParams, this.userQueryParams)
+    let raw = await Sign.DoSignInV2(userInfo.cookies, params, userQueryParams)
     let outcome = parseSignResult(raw)
 
     // 需要验证码：弹窗完成后带 validate 重新签到（对齐上游 signWithCaptcha）
     if (outcome.needCaptcha) {
       const validate = await this.requestCaptcha(userInfo.cookies, loginInfo.uname, uidForSign)
       if (validate) {
-        raw = await Sign.DoSignInV2(userInfo.cookies, this.commonQueryParams, this.userQueryParams, validate)
+        raw = await Sign.DoSignInV2(userInfo.cookies, params, userQueryParams, validate)
         outcome = parseSignResult(raw)
       } else {
         outcome = { kind: 'error', message: '验证码校验被跳过', needCaptcha: false }
       }
     }
 
-    if (map.has(outcome.message)) {
-      map.get(outcome.message)!.push(loginInfo.uname);
-    } else {
-      map.set(outcome.message, [loginInfo.uname]);
-    }
+    this.recordOutcome(map, outcome, loginInfo.uname)
     return outcome
+  }
+
+  /**
+   * 页面级签退：为所有勾选用户逐个签退
+   */
+  private async executeSignOutFlow() {
+    if (this.signIdArray.length === 0) {
+      promptAction.showToast({ message: '请选择至少一个用户' })
+      return
+    }
+
+    this.canSign = false
+    const hashTable = new Map<string, string[]>()
+    const targetIds = this.signIdArray.slice()
+    for (let i = 0; i < targetIds.length; i++) {
+      const label = targetIds[i] === 0 ? '主用户' : `用户${targetIds[i]}`
+      try {
+        const userInfo = await this.loadUserById(targetIds[i])
+        const info = await Sign.GetSignInfo(userInfo.cookies, this.activityInfo?.ActivityId || '')
+        if (info.signOutId <= 0) {
+          this.recordOutcome(hashTable, { kind: 'none', message: '该用户无可用签退', needCaptcha: false }, label)
+        } else {
+          await Sign.DoSignOut(userInfo.cookies, info.signInId, info.signOutId)
+          this.recordOutcome(hashTable, { kind: 'success', message: '签退成功', needCaptcha: false }, label)
+        }
+      } catch (e) {
+        hilog.error(DOMAIN, TAG, `User ${targetIds[i]} sign out error`, e)
+        this.recordOutcome(hashTable,
+          { kind: 'error', message: `签退失败: ${(e as Error).message}`, needCaptcha: false }, label)
+      }
+      if (i < targetIds.length - 1) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 200))
+      }
+    }
+
+    this.showSignResult(hashTable)
+    await this.refreshUserPermissions()
+    this.canSign = true
+  }
+
+  /**
+   * 按用户名聚合同类签到结果（key = kind|message）
+   */
+  private recordOutcome(map: Map<string, string[]>, outcome: SignOutcome, uname: string) {
+    const key = `${outcome.kind}|${outcome.message}`
+    if (map.has(key)) {
+      map.get(key)!.push(uname)
+    } else {
+      map.set(key, [uname])
+    }
+  }
+
+  /**
+   * 签到/签退结束后刷新用户权限状态（已签到/可签到/无权限）
+   */
+  private async refreshUserPermissions() {
+    if (!this.activityInfo) {
+      return
+    }
+    try {
+      await this.loadOtherUsers(DatabaseManager.getInstance(), this.activityInfo)
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `Refresh user permissions failed: ${(e as Error).message}`)
+    }
   }
 
   private showSignResult(hashTable: Map<string, string[]>) {
     let message = '';
-    hashTable.forEach((names, result) => {
-      if (result === '签到成功') {
-        message += `✅ 成功: ${names.join(', ')}\n`
-      } else if (result === '您已签到过了') {
-        message += `⚠️ 已签: ${names.join(', ')}\n`
+    hashTable.forEach((names, key) => {
+      const separator = key.indexOf('|')
+      const kind = separator >= 0 ? key.substring(0, separator) : 'error'
+      const result = separator >= 0 ? key.substring(separator + 1) : key
+      const displayNames = names.filter(name => name).join(', ')
+      if (kind === 'success') {
+        message += displayNames ? `✅ ${result}: ${displayNames}\n` : `✅ ${result}\n`
+      } else if (kind === 'already') {
+        message += displayNames ? `⚠️ ${result}: ${displayNames}\n` : `⚠️ ${result}\n`
       } else {
-        message += `❌ ${result}: ${names.join(', ')}\n`
+        message += displayNames ? `❌ ${result}: ${displayNames}\n` : `❌ ${result}\n`
       }
     });
 

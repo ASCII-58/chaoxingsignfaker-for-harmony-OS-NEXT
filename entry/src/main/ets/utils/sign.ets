@@ -24,10 +24,6 @@ const CAPTCHA_VERSION = '1.1.20';
 const TOKEN_EXPIRY_MS = 300000; // 5分钟
 const NO_SIGN_OFF_EVENT = 4999; // 上游约定：signOutPublishTimeStamp==4999 表示无签退
 
-export interface UploadPhotoParam {
-  '_token': string
-}
-
 export interface CaptchaConf {
   t?: number;
   error?: number;
@@ -61,15 +57,6 @@ export interface UserQueryObject {
   name: string;
 }
 
-export interface SignQueryParams {
-  activeId: string;
-  uid: number;
-  name: string;
-  fid: number;
-  latitude: string;
-  longitude: string;
-}
-
 export interface CommonSignParams {
   activeId: string;
   latitude: string;
@@ -83,19 +70,6 @@ export interface CommonSignParams {
   courseId?: string;
   currentFaceId?: string;
   faceEnc?: string;
-}
-
-export interface PreSignParamInterface {
-  activePrimaryId: string,
-  classId: string,
-  courseId: string,
-  uid?: number
-}
-
-export interface CheckCaptchaParam {
-  captchaId: string
-  token: string
-  textClickArr: string
 }
 
 /** 完整活动详情（getPPTActiveInfo 的 data 字段） */
@@ -147,23 +121,6 @@ export class Sign {
     'BBF5DF0EB748426F1C522120BAC7C482C1306CA454B394B28725462AA0536ED534916B0E2111890E9EF11A2F5572A3157A1D7703AF3C18BDA15969968F40F1677C21D9CB9750C3172689F8121EA4BEA0A5F0E3462CE1C548AA753977DD12EC459245D060957E3CF6396A55A35C412903C764D8982F836C0ABD155FC1534F4849'
   static readonly CLIENT_ID_RSA_EXPONENT = 65537
   static readonly CLIENT_ID_BLOCK_SIZE = 128
-
-  static buildSignQueryParams(activeId: string, uid: number, name: string, fid: number): SignQueryParams {
-    return {
-      activeId: activeId,
-      uid: uid,
-      name: name,
-      fid: fid,
-      latitude: '',
-      longitude: ''
-    };
-  }
-
-  static async PreSignInV2(preSignParams: PreSignParamInterface, cookies: string) {
-    const url = ChaoXingApi.URL_PRE_SIGN.buildUrl(preSignParams).toString()
-    const result = await Sign.httpGetString(url, cookies)
-    return result.includes(SIGN_TIME_MARKER)
-  }
 
   /**
    * 预签到（对齐上游：POST ext 表单 + 分析回传）
@@ -239,35 +196,6 @@ export class Sign {
     } finally {
       httpRequest.destroy()
     }
-  }
-
-  /**
-   * 手势签到或签到码签到
-   * @param cookies 用户 Cookie
-   * @param queryParams 查询参数（包含 activeId, uid, name, fid, latitude, longitude）
-   * @param signCode 签到码或手势顺序码
-   * @returns 签到结果
-   */
-  static async DoSignWithCode(cookies: string, queryParams: object, signCode: string,
-    Captcha?: string): Promise<string> {
-    const builder = ChaoXingApi.URL_SIGN.buildUrl(queryParams).buildUrl({
-      deviceCode: ChaoxingUtils.generateUUIDv4(),
-      signCode: signCode
-    })
-    if (Captcha) {
-      builder.buildUrl({ 'validate': Captcha })
-    }
-    const url = builder.toString()
-    hilog.debug(DOMAIN, TAG, 'Executing sign with code request');
-    return Sign.httpGetString(url, cookies)
-  }
-
-  static async DoSignIn(cookies: string, queryParams: object, needDeviceCode: boolean = false) {
-    const url = ChaoXingApi.URL_SIGN.buildUrl(queryParams).buildUrl({
-      deviceCode: needDeviceCode ? ChaoxingUtils.generateUUIDv4() : ''
-    }).toString()
-    hilog.debug(DOMAIN, TAG, 'Executing sign-in request');
-    return Sign.httpGetString(url, cookies)
   }
 
   static async DoSignInV2(cookies: string, commonQueryParams: CommonSignParams, userQueryParams: UserQueryObject,
