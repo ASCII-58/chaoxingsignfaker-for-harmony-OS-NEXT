@@ -3,24 +3,31 @@
 ## Project Overview
 
 - **Type**: HarmonyOS NEXT app (ArkTS/ETS)
-- **Bundle**: `com.xhub.chaoxingsignfaker` (AppScope/app.json5:3), verName 1.0.2, verCode 1000001
-- **Build system**: Hvigor (not npm) — building requires DevEco Studio with HarmonyOS SDK
+- **Bundle**: `com.xhub.chaoxingsignfaker` (AppScope/app.json5:3), verName 1.1.0, verCode 1000100
+- **Build system**: Hvigor (not npm) — DevEco Studio with HarmonyOS SDK, or the CLI command below
 - **SDK**: target/compatible 6.0.0(20) (build-profile.json5:22-23), stageMode
 - **Single module** at `entry/`, single product "default"
+- **Upstream**: HarmonyOS port of https://github.com/aquamarine5/ChaoxingSignFaker (Android); git remote `upstream` tracks it
 
 ## Key Architecture
 
-- **App entry**: `EntryAbility.ets` → loads `pages/initPage` (EntryAbility.ets:51, main_pages.json:3)
-- **Page routing**: Navigation API with `NavPathStack` (not the older `router` API). Router map at `router_map.json` (5 named pages: `HomePage`, `LoginPage`, `ActivityListPage`, `SignerPage`, `SearchCoursePage`)
-- **App flow**: initPage → checks HostUser login status → `HomePage` (`newIndex.ets`) or `LoginPage`
-- **Database**: `@hadss/debug-db` (RdbStore wrapper), initialized in EntryAbility via `DatabaseManager.init()`. HostUser + OtherUser tables.
+- **App entry**: `EntryAbility.ets` → loads `pages/initPage` (main_pages.json:3)
+- **Page routing**: Navigation API with `NavPathStack` (not the older `router` API). Router map at `router_map.json` (6 named pages: `HomePage`, `LoginPage`, `ActivityListPage`, `SignerPage`, `SearchCoursePage`, `Debug`)
+- **App flow**: initPage → checks HostUser login status → `HomePage` (`Index.ets`) or `LoginPage`
+- **Database**: `@ohos.data.relationalStore` directly via `DatabaseManager` (utils/DataBase.ets), initialized in EntryAbility via `DatabaseManager.init()`. HostUser + OtherUser tables. `getUserById(0)` = 主用户.
 - **Encryption**: `@ohos/crypto-js` for Chaoxing platform AES
-- **Image handling**: `@ohos/imageknife` + `@kit.ImageKit`
+- **Networking**: `utils/httpClient.ets` (`Http` helper) — all GET/POST/JSONP boilerplate goes through it; do not hand-roll `http.createHttp()` in new code
+- **Sign flow**: `SignerPage` owns ALL sign/sign-out orchestration (`executeSignFlow`/`executeSignOutFlow`); gesture/password components are pure inputs that validate a code and hand it back; captcha lives in `utils/captchaApi.ets`, face recognition in `utils/faceApi.ets`, cloud-drive image upload in `utils/upload.ets`
 
 ## Build & Test
 
-- No CLI build/test commands exist — all operations through DevEco Studio
-- Build debug: DevEco → Build → Build Debug Hap
+- **CLI build works** (same engine as the IDE), from repo root:
+  ```bat
+  set DEVECO_SDK_HOME=D:\OtherApp\DevEco Studio\sdk
+  "D:\OtherApp\DevEco Studio\tools\hvigor\bin\hvigorw.bat" --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap
+  ```
+  Signed hap lands at `entry/build/default/outputs/default/entry-default-signed.hap`
+- IDE build: DevEco → Build → Build Debug Hap
   - **If build fails**: Check error log (bottom panel) for common issues:
     - Missing dependencies → Re-open oh-package.json5 and sync
     - Lint errors → Fix reported violations in code-linter.json5 rules
@@ -34,19 +41,19 @@
 
 ## Source Layout
 
-- `entry/src/main/ets/pages/` — 6 page files (initPage, newIndex=HomePage, LoginPage, ActivityListPage, SearchCoursePage, SignerPage)
-- `entry/src/main/ets/utils/` — DataBase, Login, sign, utils (ChaoxingUtils), urlTools, shareUtils, PublicAPI (API endpoint definitions), classFun
-- `entry/src/main/ets/Component/` — AnimButton, DebugPage, GestureSignComponent, LoginCom, OtherUserCom, PasswordSignComponent, SettingsComponent
-- `entry/src/main/ets/CustomNavigation/` — CustomNavigationUtils (NavPathStack extras)
+- `entry/src/main/ets/pages/` — initPage, Index (=HomePage), LoginPage, ActivityListPage, SearchCoursePage, SignerPage (sign orchestration hub)
+- `entry/src/main/ets/utils/` — sign (core sign APIs), captchaApi, faceApi, httpClient (Http helper), upload (cloud-drive image upload), DataBase, Login, utils (ChaoxingUtils), urlTools, shareUtils, PublicAPI (API endpoint definitions), classFun
+- `entry/src/main/ets/Component/` — Captcha (slider), FacePicker, PhotoPicker, QRCodeLocationCard, SignerUsers (user list items), GestureSignComponent / PasswordSignComponent (pure code inputs), LightButton (press-light button), DebugPage, LoginCom, OtherUserCom, SettingsComponent
 - `entry/src/main/ets/entryability/` — EntryAbility (database init, cookie refresh)
 - `entry/src/main/ets/entrybackupability/` — EntryBackupAbility (backup/restore)
 
 ## Noteworthy Details
 
-- Debug page at `Component/DebugPage.ets`: tap avatar 10x + password `ASCII58DEBUG`
+- Debug page at `Component/DebugPage.ets`: tap avatar 10x + password `nnn` (set in pages/Index.ets; keep this doc in sync if changed)
 - `local.properties` is auto-generated by DevEco — do not commit
 - Device install requires signing; dev uses test certificate
 - `.editorconfig`: indent 2 spaces, max_line_length 120 for `.ets`/`.ts`/`.js`
+- ArkTS gotchas hit before: function-type props must be optional (`onX?:`); `Object.assign`/object-spread restricted; `ImagePacker.packToData` (not pack); `fs.OpenMode.TRUNC` (not TRUNCATE); a `@Prop` cannot be named `enabled`
 
 ---
 

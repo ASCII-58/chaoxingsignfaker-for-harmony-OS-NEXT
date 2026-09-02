@@ -1,7 +1,7 @@
 import { Sign } from '../utils/sign';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction } from '@kit.ArkUI';
-import { hdsEffect } from '@kit.UIDesignKit';
+import { LightButton } from './LightButton';
 
 const TAG = 'PasswordSignComponent';
 const DOMAIN = 0x000A;
@@ -25,7 +25,6 @@ export struct PasswordSignComponent {
   @State codeReady: boolean = false;
   @State resultMsg: string = '';
   @State isValidating: boolean = false;
-  @State submitBtnLight: hdsEffect.PointLightSourceType = hdsEffect.PointLightSourceType.NONE;
 
   private invalidate() {
     if (this.codeReady) {
@@ -109,30 +108,14 @@ export struct PasswordSignComponent {
       }
 
       // 校验按钮
-      Button(this.isValidating ? '校验中...' : '校验签到码')
-        .width(200)
-        .fontColor($r('app.color.text_on_primary'))
-        .visualEffect(new hdsEffect.HdsEffectBuilder()
-          .pointLight({
-            sourceType: this.submitBtnLight,
-            illuminatedType: hdsEffect.PointLightIlluminatedType.BORDER
-          })
-          .buildEffect())
-        .onTouch((event: TouchEvent) => {
-          if (event.type === TouchType.Down) {
-            animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
-              this.submitBtnLight = hdsEffect.PointLightSourceType.BRIGHT;
-            })
-          } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-            animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
-              this.submitBtnLight = hdsEffect.PointLightSourceType.NONE;
-            })
-          }
-        })
-        .onClick(() => {
+      LightButton({
+        label: this.isValidating ? '校验中...' : '校验签到码',
+        btnEnabled: !this.isValidating,
+        onButton: () => {
           this.submitSignCode()
-        })
-        .enabled(!this.isValidating)
+        }
+      })
+        .width(200)
         .margin({ bottom: 8 })
     }
     .width('100%')

@@ -1,8 +1,7 @@
-import { http } from '@kit.NetworkKit';
 import { JSON } from '@kit.ArkTS';
 import { ChaoXingApi} from './PublicAPI'
-import { DatabaseManager } from './DataBase';
 import { ChaoxingUtils } from './utils';
+import { Http } from './httpClient';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const TAG = 'CourseActivityService';
@@ -20,15 +19,8 @@ export class CourseAndActivity {
    * @returns
    */
   static async getClassList(cookies: string): Promise<returnJson> {
-    const httpRequest = http.createHttp();
     try {
-      const result = await httpRequest.request(ChaoXingApi.URL_GET_COURSE_LIST, {
-        method: http.RequestMethod.GET,
-        header: {
-          "Cookie": cookies
-        }
-      })
-      const CourseListResponse = JSON.parse(result.result.toString()) as CourseListResponse
+      const CourseListResponse = await Http.getJson(ChaoXingApi.URL_GET_COURSE_LIST, cookies) as CourseListResponse
       if (CourseListResponse.msg === "获取成功") {
         const courseList = CourseListResponse.channelList
         const result: ClassInfo[] = [];
@@ -53,8 +45,6 @@ export class CourseAndActivity {
       }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to get class list: ${error.message}`);
-    } finally {
-      httpRequest.destroy()
     }
     return {
       msg: false,
@@ -72,22 +62,14 @@ export class CourseAndActivity {
   }
 
   static async getActivityList(cookies: string, classId: string, courseId: string): Promise<ActivityListResult | null> {
-    const httpRequest = http.createHttp();
-    const url=ChaoxingUtils.buildUrl(ChaoXingApi.URL_GET_ACTIVITY_LIST,
+    const url = ChaoxingUtils.buildUrl(ChaoXingApi.URL_GET_ACTIVITY_LIST,
       {
         'classId': classId,
         'courseId': courseId
       })
     hilog.debug(DOMAIN, TAG, 'Fetching activity list');
     try {
-      const result = await httpRequest.request(url,
-        {
-          method: http.RequestMethod.GET,
-          header: {
-            "Cookie": cookies
-          }
-        })
-      const ActivityMessage = JSON.parse(result.result.toString()) as object
+      const ActivityMessage = await Http.getJson(url, cookies)
       const data = ActivityMessage?.['data'] as object
       const ActivityList = data?.['activeList'] as ActivityItem[]
       const ext = data?.['ext'] as object
@@ -98,8 +80,6 @@ export class CourseAndActivity {
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to get activity list: ${error.message}`);
       return null
-    }finally {
-      httpRequest.destroy()
     }
   }
 }

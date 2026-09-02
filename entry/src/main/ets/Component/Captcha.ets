@@ -1,4 +1,4 @@
-import { CaptchaPhotosParam, CaptchaPhotosResult, Sign } from '../utils/sign'
+import { CaptchaPhotosParam, CaptchaPhotosResult, CaptchaApi } from '../utils/captchaApi'
 import { preferences } from '@kit.ArkData'
 import { common } from '@kit.AbilityKit'
 import { promptAction } from '@kit.ArkUI'
@@ -58,7 +58,7 @@ export struct CaptchaComponent {
     this.errMsg = ''
     this.sliderValue = 0
     try {
-      this.info = await Sign.getCaptchaPhotos(this.captchaUser.refererParams, this.captchaUser.cookies)
+      this.info = await CaptchaApi.getCaptchaPhotos(this.captchaUser.refererParams, this.captchaUser.cookies)
       await this.tryMemoryCheck()
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Load captcha failed: ${(e as Error).message}`)
@@ -97,7 +97,7 @@ export struct CaptchaComponent {
     }
     this.isChecking = true
     try {
-      return await Sign.checkCaptchaResult(this.info, normalizedX, this.captchaUser.refererParams,
+      return await CaptchaApi.checkCaptchaResult(this.info, normalizedX, this.captchaUser.refererParams,
         this.captchaUser.cookies)
     } finally {
       this.isChecking = false

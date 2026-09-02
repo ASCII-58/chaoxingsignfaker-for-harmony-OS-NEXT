@@ -384,6 +384,19 @@ class DatabaseManager {
   }
 
   /**
+   * 按签到用户 ID 取用户（0 = 主用户/HostUser 第 1 条，N = OtherUser 第 N 条）
+   *
+   * @param userId 签到用户 ID（SignerPage 勾选列表中的 ID）
+   * @returns 用户数据或null
+   */
+  public async getUserById(userId: number): Promise<UserDataAndId | null> {
+    if (userId === 0) {
+      return await this.getUserByPosition(1, true);
+    }
+    return await this.getUserByPosition(userId, false);
+  }
+
+  /**
    * 获取指定表的记录数量
    *
    * @param tableName 要查询的表名（必须是允许的表）

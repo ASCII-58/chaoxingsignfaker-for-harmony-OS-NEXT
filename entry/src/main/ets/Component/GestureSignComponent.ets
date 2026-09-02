@@ -1,7 +1,7 @@
 import { Sign } from '../utils/sign';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction } from '@kit.ArkUI';
-import { hdsEffect } from '@kit.UIDesignKit';
+import { LightButton } from './LightButton';
 
 const TAG = 'GestureSignComponent';
 const DOMAIN = 0x0009;
@@ -25,8 +25,6 @@ export struct GestureSignComponent {
   @State codeReady: boolean = false;
   @State resultMsg: string = '';
   @State isValidating: boolean = false;
-  @State resetBtnLight: hdsEffect.PointLightSourceType = hdsEffect.PointLightSourceType.NONE;
-  @State submitBtnLight: hdsEffect.PointLightSourceType = hdsEffect.PointLightSourceType.NONE;
 
   onGesturePointClick(index: number) {
     if (this.codeReady) {
@@ -125,55 +123,24 @@ export struct GestureSignComponent {
 
       // 操作按钮
       Row() {
-        Button('重置')
-          .width(100)
-          .fontColor($r('app.color.text_on_primary'))
-          .visualEffect(new hdsEffect.HdsEffectBuilder()
-            .pointLight({
-              sourceType: this.resetBtnLight,
-              illuminatedType: hdsEffect.PointLightIlluminatedType.BORDER
-            })
-            .buildEffect())
-          .onTouch((event: TouchEvent) => {
-            if (event.type === TouchType.Down) {
-              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
-                this.resetBtnLight = hdsEffect.PointLightSourceType.BRIGHT;
-              })
-            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
-                this.resetBtnLight = hdsEffect.PointLightSourceType.NONE;
-              })
-            }
-          })
-          .onClick(() => {
+        LightButton({
+          label: '重置',
+          btnEnabled: true,
+          onButton: () => {
             this.resetGesture()
-          })
+          }
+        })
+          .width(100)
           .margin({ right: 10 })
 
-        Button(this.isValidating ? '校验中...' : '校验手势')
-          .width(120)
-          .fontColor($r('app.color.text_on_primary'))
-          .visualEffect(new hdsEffect.HdsEffectBuilder()
-            .pointLight({
-              sourceType: this.submitBtnLight,
-              illuminatedType: hdsEffect.PointLightIlluminatedType.BORDER
-            })
-            .buildEffect())
-          .onTouch((event: TouchEvent) => {
-            if (event.type === TouchType.Down) {
-              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
-                this.submitBtnLight = hdsEffect.PointLightSourceType.BRIGHT;
-              })
-            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-              animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
-                this.submitBtnLight = hdsEffect.PointLightSourceType.NONE;
-              })
-            }
-          })
-          .onClick(() => {
+        LightButton({
+          label: this.isValidating ? '校验中...' : '校验手势',
+          btnEnabled: !this.codeReady && this.gesturePattern.length > 0 && !this.isValidating,
+          onButton: () => {
             this.submitGesture()
-          })
-          .enabled(!this.codeReady && this.gesturePattern.length > 0 && !this.isValidating)
+          }
+        })
+          .width(120)
       }
       .margin({ bottom: 8 })
     }
