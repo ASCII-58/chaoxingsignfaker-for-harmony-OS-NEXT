@@ -509,7 +509,7 @@ export default struct HomePage {
             }, (classInfo: ClassInfo) => classInfo.id)
           }
           .divider({ strokeWidth: 0.5, color: $r('sys.color.comp_divider'), startMargin: 72, endMargin: 16 })
-          .width('100%').scrollBar(BarState.Off)
+          .width('100%').height('100%').scrollBar(BarState.Off) // 高度占满:课程未加载/数量过少时列表不收缩居中,搜索框保持在悬浮标题栏下方
           .padding({ bottom: 64 }) // barOverlap 内容穿透：末项不被页签栏遮挡
         }
         .height('100%').width('100%')
