@@ -19,7 +19,7 @@ export struct PasswordSignComponent {
   /** 签到码位数（0 表示不限制） */
   @Prop codeLength: number = 0;
   /** 校验通过回传签到码，输入变更/清空回传 '' */
-  onSignCode: (code: string) => void
+  onSignCode?: (code: string) => void
 
   @State signCode: string = '';
   @State codeReady: boolean = false;
@@ -32,7 +32,7 @@ export struct PasswordSignComponent {
       this.codeReady = false;
     }
     this.resultMsg = '';
-    this.onSignCode('');
+    this.onSignCode?.('');
   }
 
   async submitSignCode() {
@@ -60,7 +60,7 @@ export struct PasswordSignComponent {
 
       this.resultMsg = '签到码校验通过，请点击下方按钮签到';
       this.codeReady = true;
-      this.onSignCode(this.signCode);
+      this.onSignCode?.(this.signCode);
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Sign code validate failed: ${(e as Error).message}`);
       this.resultMsg = `签到码校验失败: ${(e as Error).message}`;

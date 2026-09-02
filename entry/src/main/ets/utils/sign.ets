@@ -678,7 +678,7 @@ export class Sign {
       if (result.responseCode !== 200) {
         throw new Error(`下载人脸照片失败(${result.responseCode})`)
       }
-      const file = fs.openSync(filePath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNCATE)
+      const file = fs.openSync(filePath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
       fs.writeSync(file.fd, result.result as ArrayBuffer)
       fs.closeSync(file)
     } finally {

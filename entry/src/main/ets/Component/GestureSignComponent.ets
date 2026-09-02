@@ -18,7 +18,7 @@ export struct GestureSignComponent {
   /** 主用户 Cookie，仅用于即时校验手势码 */
   @Prop hostCookies: string;
   /** 校验通过回传手势码，重置/失效回传 '' */
-  onSignCode: (code: string) => void
+  onSignCode?: (code: string) => void
 
   @State gesturePattern: number[] = []; // 手势顺序
   @State gesturePoints: boolean[] = Array(GESTURE_GRID_SIZE).fill(false);
@@ -45,7 +45,7 @@ export struct GestureSignComponent {
     this.resultMsg = '';
     if (this.codeReady) {
       this.codeReady = false;
-      this.onSignCode('');
+      this.onSignCode?.('');
     }
   }
 
@@ -69,7 +69,7 @@ export struct GestureSignComponent {
 
       this.resultMsg = '手势校验通过，请点击下方按钮签到';
       this.codeReady = true;
-      this.onSignCode(gestureCode);
+      this.onSignCode?.(gestureCode);
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Gesture validate failed: ${(e as Error).message}`);
       this.resultMsg = `手势校验失败: ${(e as Error).message}`;
