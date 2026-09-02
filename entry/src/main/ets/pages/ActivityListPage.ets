@@ -85,6 +85,7 @@ export struct ActivityListPage {
   @State name: string = '';
   @State ActivityList: ActivityItem[] | null = null
   @State activityExt: string = ''
+  @State isRefreshing: boolean = false
 
   build() {
     NavDestination() {
@@ -161,51 +162,95 @@ export struct ActivityListPage {
         .divider({ strokeWidth: 0.5, color: $r('sys.color.comp_divider'), startMargin: 72, endMargin: 16 })
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .height('100%')
+      } else if (this.isRefreshing) {
+        Column() {
+          LoadingProgress()
+            .width(44)
+            .height(44)
+            .color($r('app.color.icon'))
+        }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.Center)
+      } else {
+        Column() {
+          Text('暂无签到活动，可点击右上角刷新')
+            .fontSize(14)
+            .fontColor($r('app.color.secondary_text'))
+        }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.Center)
       }
     }
     .height('100%')
     .width('100%')
     .backgroundColor($r('app.color.page_background'))
     .title(`${this.name}`)
+    .menus([{
+      value: '刷新签到活动',
+      icon: $r('app.media.ic_refresh'),
+      action: () => {
+        this.loadActivities(true)
+      }
+    }])
     .onReady((ctx: NavDestinationContext) => {
       this.pathInfos = ctx.pathStack;
     })
     .onAppear(async () => {
-      try {
-        if (this.classInfo) {
-          this.courseId = this.classInfo.id; // 课程id
-          hilog.debug(DOMAIN, TAG, `Course ID: ${this.courseId}`);
-          this.teacherfactor = this.classInfo?.teacherfactor as string;
-          hilog.debug(DOMAIN, TAG, `Teacher: ${this.teacherfactor}`);
-          this.classId = this.classInfo.classId; // 班级id
-          this.name = this.classInfo?.name as string
-          hilog.debug(DOMAIN, TAG, `Class name: ${this.name}`);
-          const dbManager = DatabaseManager.getInstance()
-          const cookies = (await dbManager.getUserByPosition(1, true))?.cookies
-          if (cookies) {
-            hilog.debug(DOMAIN, TAG, 'Loading activity list');
-            const activityResult = await CourseAndActivity.getActivityList(cookies, this.classId, this.courseId);
-            this.ActivityList = activityResult ? activityResult.activities : null;
-            this.activityExt = activityResult ? activityResult.ext : '';
-            hilog.debug(DOMAIN, TAG, `Activity list loaded: ${this.ActivityList ? 'success' : 'failed'}`);
-            if (this.ActivityList) {
-              this.ActivityList.forEach(element => {
-                hilog.debug(DOMAIN, TAG, `Activity: ${JSON.stringify(element)}`);
-              });
-            } else {
-              throw new Error('签到列表获取为空')
-            }
-          } else {
-            throw new Error('用户登录信息错误')
-          }
-        } else {
-          throw new Error('未获取到课程信息')
-        }
-      } catch (e) {
-        hilog.error(DOMAIN, TAG, `Error in onAppear: ${e.message}`);
+      if (!this.classInfo) {
+        hilog.error(DOMAIN, TAG, 'No class info');
+        promptAction.showToast({ message: '未获取到课程信息' })
+        return
       }
+      this.courseId = this.classInfo.id; // 课程id
+      hilog.debug(DOMAIN, TAG, `Course ID: ${this.courseId}`);
+      this.teacherfactor = this.classInfo?.teacherfactor as string;
+      hilog.debug(DOMAIN, TAG, `Teacher: ${this.teacherfactor}`);
+      this.classId = this.classInfo.classId; // 班级id
+      this.name = this.classInfo?.name as string
+      hilog.debug(DOMAIN, TAG, `Class name: ${this.name}`);
+      await this.loadActivities(false)
     })
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+  }
+
+  /**
+   * 拉取签到活动列表(首载与手动刷新共用)
+   * @param isManualRefresh 手动点刷新按钮时为 true,成功后给出提示
+   */
+  private async loadActivities(isManualRefresh: boolean): Promise<void> {
+    if (this.isRefreshing) {
+      return
+    }
+    this.isRefreshing = true
+    try {
+      const dbManager = DatabaseManager.getInstance()
+      const cookies = (await dbManager.getUserByPosition(1, true))?.cookies
+      if (!cookies) {
+        throw new Error('用户登录信息错误')
+      }
+      hilog.debug(DOMAIN, TAG, 'Loading activity list');
+      const activityResult = await CourseAndActivity.getActivityList(cookies, this.classId, this.courseId);
+      this.ActivityList = activityResult ? activityResult.activities : null;
+      this.activityExt = activityResult ? activityResult.ext : '';
+      hilog.debug(DOMAIN, TAG, `Activity list loaded: ${this.ActivityList ? 'success' : 'failed'}`);
+      if (this.ActivityList) {
+        this.ActivityList.forEach(element => {
+          hilog.debug(DOMAIN, TAG, `Activity: ${JSON.stringify(element)}`);
+        });
+      } else {
+        throw new Error('签到列表获取为空')
+      }
+      if (isManualRefresh) {
+        promptAction.showToast({ message: '签到活动已刷新' })
+      }
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `Error in loadActivities: ${(e as Error).message}`);
+      promptAction.showToast({ message: `刷新签到活动失败: ${(e as Error).message}` })
+    } finally {
+      this.isRefreshing = false
+    }
   }
 
   private getStatusText(Activity: ActivityItem): string {
