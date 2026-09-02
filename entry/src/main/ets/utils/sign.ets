@@ -181,14 +181,14 @@ export class Sign {
       commonParams.faceEnc = commonQueryParams.faceEnc;
       commonParams.courseId = commonQueryParams.courseId;
     }
-    const builder = ChaoXingApi.URL_SIGN.buildUrl(commonParams)
+    let builder = ChaoXingApi.URL_SIGN.buildUrl(commonParams)
       .buildUrl(userQueryParams)
       .buildUrl({ deviceCode: deviceCode });
     if (commonParams.currentFaceId) {
-      builder.buildUrl({ 'ifCFP': '0', 'faceCode': '', 'faceEncAid': '' });
+      builder = builder.buildUrl({ 'ifCFP': '0', 'faceCode': '', 'faceEncAid': '' });
     }
     if (validate) {
-      builder.buildUrl({ 'validate': validate });
+      builder = builder.buildUrl({ 'validate': validate });
     }
     return (await Http.get(builder.toString(), cookies)).body;
   }

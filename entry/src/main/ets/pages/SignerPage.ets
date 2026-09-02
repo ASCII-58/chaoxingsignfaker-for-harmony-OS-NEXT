@@ -441,7 +441,13 @@ export struct SignPage {
         .bindSheet($$this.captchaSheetShow, this.CaptchaSheetBuilder, {
           title: { title: '签到验证码' },
           backgroundColor: $r('sys.color.ohos_id_color_dialog_bg'),
-          detents: [SheetSize.MEDIUM, SheetSize.LARGE]
+          detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+          onWillDismiss: (dismissAction: DismissSheetAction) => {
+            // 用户点 ✕/蒙层/下拉关闭弹层时视为跳过该用户,否则 captchaResolver 永不回调,签到流程会挂起
+            this.captchaResolver?.(null)
+            this.captchaResolver = null
+            dismissAction.dismiss()
+          }
         })
       } else {
         Column() {

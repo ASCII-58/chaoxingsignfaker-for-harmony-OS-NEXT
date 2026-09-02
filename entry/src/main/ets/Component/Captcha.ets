@@ -68,22 +68,34 @@ export struct CaptchaComponent {
     }
   }
 
+  /** 记忆 key:背景图 URL 文件名(对齐上游 imageFilename;图片池内固定,同一张图正确 x 恒定) */
+  private getImageMemoryKey(): string {
+    const url = this.info.imageVerificationVo.shadeImage
+    const fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0]
+    const dotIndex = fileName.lastIndexOf('.')
+    return dotIndex >= 0 ? fileName.substring(0, dotIndex) : fileName
+  }
+
   /** 本地验证码记忆：命中则自动校验一次（对齐上游 captchaMemories） */
   private async tryMemoryCheck() {
     if (!this.captchaUser || !this.info.token) {
       return
     }
+    const memoryKey = this.getImageMemoryKey()
+    if (!memoryKey) {
+      return
+    }
     try {
       const context = getContext(this) as common.UIAbilityContext
       const pref = await preferences.getPreferences(context, CAPTCHA_MEMORY_PREF)
-      const memoryX = await pref.get(this.info.token, -1) as number
+      const memoryX = await pref.get(memoryKey, -1) as number
       if (memoryX >= 0) {
         const validate = await this.checkPosition(memoryX)
         if (validate) {
           this.finish(validate)
           return
         }
-        await pref.delete(this.info.token)
+        await pref.delete(memoryKey)
         await pref.flush()
       }
     } catch (e) {
@@ -108,7 +120,11 @@ export struct CaptchaComponent {
     try {
       const context = getContext(this) as common.UIAbilityContext
       const pref = await preferences.getPreferences(context, CAPTCHA_MEMORY_PREF)
-      await pref.put(this.info.token, normalizedX)
+      const memoryKey = this.getImageMemoryKey()
+      if (!memoryKey) {
+        return
+      }
+      await pref.put(memoryKey, normalizedX)
       await pref.flush()
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Save captcha memory failed: ${(e as Error).message}`)
@@ -131,7 +147,8 @@ export struct CaptchaComponent {
       this.finish(validate)
     } else {
       promptAction.showToast({ message: '验证码校验失败，请重试', duration: 1500 })
-      this.sliderValue = 0
+      // 对齐上游:校验失败后换新图(token 可能已失效,同一张图重试意义有限)
+      await this.refresh()
     }
   }
 
