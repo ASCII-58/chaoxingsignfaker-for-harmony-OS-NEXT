@@ -61,6 +61,30 @@ export class CourseAndActivity {
     }
   }
 
+  /**
+   * 校验用户是否在指定班级（对齐上游 ChaoxingCourseHelper.checkClassValid）
+   * 逐项比对课程频道列表的班级 id（content.id），与该频道是否包含课程数据无关
+   * @returns true=在班级 false=不在班级 null=无法判定（接口异常或返回异常）
+   */
+  static async checkClassValid(cookies: string, classId: string): Promise<boolean | null> {
+    try {
+      const jsonResult = await Http.getJson(ChaoXingApi.URL_GET_COURSE_LIST, cookies) as CourseListResponse;
+      const channelList = jsonResult.channelList;
+      if (jsonResult.result === 0 || !channelList) {
+        return null;
+      }
+      for (const channel of channelList) {
+        if (channel.content && String(channel.content.id) === String(classId)) {
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Check class valid failed: ${error.message}`);
+      return null;
+    }
+  }
+
   static async getActivityList(cookies: string, classId: string, courseId: string): Promise<ActivityListResult | null> {
     const url = ChaoxingUtils.buildUrl(ChaoXingApi.URL_GET_ACTIVITY_LIST,
       {

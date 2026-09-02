@@ -1,4 +1,5 @@
 import { ChaoXingApi } from './PublicAPI';
+import { CourseAndActivity } from './classFun';
 import { Http } from './httpClient';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { JSON, util } from '@kit.ArkTS';
@@ -114,7 +115,8 @@ export class Sign {
 
   /**
    * 预签到（对齐上游：POST ext 表单 + 分析回传）
-   * @returns -1 = 无权限 | 0 = 已签到 | 1 = 可签到 | 2 = 已截止
+   * 可签到状态下校验用户是否在班级（对齐上游 checkSignStatusThrowException）
+   * @returns -1 = 无权限（校验失败/不在班级） | 0 = 已签到 | 1 = 可签到 | 2 = 已截止
    */
   static async PreSignIn(activePrimaryId: string, classId: string, courseId: string, uid: number,
     cookies: string, ext: string = ''): Promise<number> {
@@ -135,6 +137,10 @@ export class Sign {
     }
     if (response.body.includes(SIGN_TIME_MARKER)) {
       return 0;
+    }
+    // 对齐上游：仅明确判定"不在班级"才返回无权限，无法判定（null）视为可签到
+    if (await CourseAndActivity.checkClassValid(cookies, classId) === false) {
+      return -1;
     }
     return 1;
   }
