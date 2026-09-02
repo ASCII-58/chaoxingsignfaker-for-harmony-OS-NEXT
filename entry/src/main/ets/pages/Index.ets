@@ -327,8 +327,7 @@ struct UserInfoComponent {
     .translate({ y: this.isReady ? 0 : -16 })
     .bindSheet($$this.sheetVisible, this.UnifiedSheet, {
       height: 'auto', detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-      backgroundColor: $r('sys.color.ohos_id_color_sub_background'),
-      onWillDismiss: () => { this.sheetVisible = false }
+      backgroundColor: $r('sys.color.ohos_id_color_sub_background')
     })
   }
 
@@ -595,8 +594,7 @@ export default struct HomePage {
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
           .bindSheet($$this.loginSheetVisible, this.loginSheetContent, {
             height: 'auto', detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-            backgroundColor: $r('sys.color.ohos_id_color_sub_background'),
-            onWillDismiss: () => { this.loginSheetVisible = false }
+            backgroundColor: $r('sys.color.ohos_id_color_sub_background')
           })
         }
         .tabBar($r('app.string.user'))

@@ -9,6 +9,11 @@ import { DatabaseManager } from '../utils/DataBase';
 
 const PREF_COLOR_MODE_KEY = 'app_color_mode';
 const COLOR_MODE_LABELS = ['自动', '浅色', '深色'];
+const COLOR_MODE_ICONS: Resource[] = [
+  $r('app.media.ic_theme_auto'),
+  $r('app.media.ic_theme_light'),
+  $r('app.media.ic_theme_dark')
+];
 
 @Component
 export struct SettingsComponent {
@@ -87,6 +92,23 @@ export struct SettingsComponent {
       console.error('Failed to clear cache', error);
       promptAction.showToast({ message: '清除缓存失败' });
     }
+  }
+
+  confirmClearCache() {
+    AlertDialog.show({
+      message: '确定清除缓存吗？临时文件与图片缓存将被删除。',
+      primaryButton: {
+        value: '取消',
+        action: () => {}
+      },
+      secondaryButton: {
+        value: '清除',
+        fontColor: $r('app.color.unsignable'),
+        action: () => {
+          this.clearCache()
+        }
+      }
+    });
   }
 
   async exportDatabase() {
@@ -189,169 +211,187 @@ export struct SettingsComponent {
     });
   }
 
+  @Builder
+  SectionHeader(title: string) {
+    Text(title)
+      .fontSize(14)
+      .fontColor($r('app.color.secondary_text'))
+      .width('100%')
+      .margin({ bottom: 8, left: 4 })
+  }
+
+  @Builder
+  SettingsDivider() {
+    Divider()
+      .color($r('sys.color.comp_divider'))
+      .margin({ left: 16, right: 16 })
+  }
+
+  /** 通用栏行文案:标题 + 可选副标题 */
+  @Builder
+  SettingTexts(title: string, subtitle: string) {
+    Column() {
+      Text(title)
+        .fontSize(16)
+        .fontColor($r('app.color.primary_text'))
+      if (subtitle !== '') {
+        Text(subtitle)
+          .fontSize(12)
+          .fontColor($r('app.color.secondary_text'))
+          .margin({ top: 2 })
+      }
+    }
+    .alignItems(HorizontalAlign.Start)
+    .layoutWeight(1)
+  }
+
+  @Builder
+  Chevron() {
+    Image($r('app.media.arrow_right'))
+      .width(14).height(14)
+      .fillColor($r('app.color.icon'))
+  }
+
   build() {
     Column() {
-      Column().height(10)
+      // 半屏弹层拖拽指示条
+      Column()
+        .width(36).height(4).borderRadius(2)
+        .backgroundColor($r('sys.color.comp_divider'))
+        .margin({ top: 10 })
+
       Text('设置')
         .fontSize(24).fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.primary_text'))
         .width('100%').textAlign(TextAlign.Start)
-        .padding({ left: 20, bottom: 20 })
+        .padding({ left: 20, top: 12, bottom: 16 })
 
-      List({ space: 12 }) {
-        // Appearance Section
+      List({ space: 16 }) {
+        // 外观：三张可点选的模式卡片(整卡可点,选中态高亮)
         ListItem() {
           Column() {
-            Text('外观')
-              .fontSize(14)
-              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-              .width('100%')
-              .margin({ bottom: 8, left: 4 })
-
-            Column() {
+            this.SectionHeader('外观')
+            Row({ space: 10 }) {
               ForEach([0, 1, 2], (idx: number) => {
-                Row() {
+                Column({ space: 8 }) {
+                  Stack() {
+                    Row()
+                      .width(52).height(52)
+                      .borderRadius(14)
+                      .backgroundColor(this.colorModeIndex === idx
+                        ? $r('app.color.selected') : $r('app.color.icon'))
+                      .opacity(this.colorModeIndex === idx ? 0.16 : 0.32)
+                    Image(COLOR_MODE_ICONS[idx])
+                      .width(26).height(26)
+                  }
                   Text(COLOR_MODE_LABELS[idx])
-                    .fontSize(16)
-                    .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                  Blank()
-                  Radio({ value: `mode_${idx}`, group: 'colorModeGroup' })
-                    .checked(this.colorModeIndex === idx)
-                    .onChange((checked: boolean) => {
-                      if (checked) this.setColorMode(idx)
-                    })
+                    .fontSize(13)
+                    .fontWeight(this.colorModeIndex === idx ? FontWeight.Medium : FontWeight.Normal)
+                    .fontColor(this.colorModeIndex === idx
+                      ? $r('app.color.selected') : $r('app.color.secondary_text'))
                 }
-                .width('100%').padding(12)
-
-                if (idx < 2) {
-                  Divider()
-                    .color($r('sys.color.ohos_id_color_list_separator'))
-                    .margin({ left: 12, right: 12 })
-                }
-              })
+                .layoutWeight(1)
+                .padding({ top: 14, bottom: 14 })
+                .borderRadius(14)
+                .backgroundColor($r('app.color.card_background'))
+                .border({
+                  width: 2,
+                  color: this.colorModeIndex === idx
+                    ? $r('app.color.selected') : Color.Transparent
+                })
+                .onClick(() => {
+                  this.setColorMode(idx)
+                })
+              }, (idx: number) => idx.toString())
             }
-            .backgroundColor($r('sys.color.ohos_id_color_list_card_bg'))
-            .borderRadius(16)
+            .width('100%')
+            .alignItems(VerticalAlign.Top)
           }
         }
 
-        // General Section
+        // 通用：两行式设置行(标题 + 说明)
         ListItem() {
           Column() {
-            Text('通用')
-              .fontSize(14)
-              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-              .width('100%')
-              .margin({ bottom: 8, left: 4 })
-
+            this.SectionHeader('通用')
             Column() {
               Row() {
-                Text('版本')
-                  .fontSize(16)
-                  .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                Blank()
+                this.SettingTexts('版本', '当前应用版本')
                 Text(this.version)
                   .fontSize(14)
-                  .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+                  .fontColor($r('app.color.secondary_text'))
               }
-              .width('100%').padding(12)
+              .width('100%').padding({ left: 16, right: 16, top: 13, bottom: 13 })
 
-              Divider()
-                .color($r('sys.color.ohos_id_color_list_separator'))
-                .margin({ left: 12, right: 12 })
+              this.SettingsDivider()
 
               Row() {
-                Text('清除缓存')
-                  .fontSize(16)
-                  .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                Blank()
-                Image($r('app.media.arrow_right'))
-                  .width(16).height(16)
-                  .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
+                this.SettingTexts('清除缓存', '清理临时文件与图片缓存')
+                this.Chevron()
               }
-              .width('100%').padding(12)
-              .onClick(() => { this.clearCache() })
+              .width('100%').padding({ left: 16, right: 16, top: 13, bottom: 13 })
+              .onClick(() => {
+                this.confirmClearCache()
+              })
 
-              Divider()
-                .color($r('sys.color.ohos_id_color_list_separator'))
-                .margin({ left: 12, right: 12 })
+              this.SettingsDivider()
 
               Row() {
-                Text('导出数据库')
-                  .fontSize(16)
-                  .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                Blank()
-                Image($r('app.media.arrow_right'))
-                  .width(16).height(16)
-                  .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
+                this.SettingTexts('导出数据库', '备份用户数据为 JSON 文件')
+                this.Chevron()
               }
-              .width('100%').padding(12)
-              .onClick(() => { this.exportDatabase() })
+              .width('100%').padding({ left: 16, right: 16, top: 13, bottom: 13 })
+              .onClick(() => {
+                this.exportDatabase()
+              })
 
-              Divider()
-                .color($r('sys.color.ohos_id_color_list_separator'))
-                .margin({ left: 12, right: 12 })
+              this.SettingsDivider()
 
               Row() {
-                Text('导入数据库')
-                  .fontSize(16)
-                  .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                Blank()
-                Image($r('app.media.arrow_right'))
-                  .width(16).height(16)
-                  .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
+                this.SettingTexts('导入数据库', '从 JSON 备份文件恢复数据')
+                this.Chevron()
               }
-              .width('100%').padding(12)
-              .onClick(() => { this.importDatabase() })
+              .width('100%').padding({ left: 16, right: 16, top: 13, bottom: 13 })
+              .onClick(() => {
+                this.importDatabase()
+              })
 
-              Divider()
-                .color($r('sys.color.ohos_id_color_list_separator'))
-                .margin({ left: 12, right: 12 })
+              this.SettingsDivider()
 
               Row() {
-                Text('更新日志')
-                  .fontSize(16)
-                  .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                Blank()
-                Image($r('app.media.arrow_right'))
-                  .width(16).height(16)
-                  .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
+                this.SettingTexts('更新日志', '查看最近的更新内容')
+                this.Chevron()
               }
-              .width('100%').padding(12)
-              .onClick(() => { this.showChangelog() })
+              .width('100%').padding({ left: 16, right: 16, top: 13, bottom: 13 })
+              .onClick(() => {
+                this.showChangelog()
+              })
 
-              Divider()
-                .color($r('sys.color.ohos_id_color_list_separator'))
-                .margin({ left: 12, right: 12 })
+              this.SettingsDivider()
 
               Row() {
-                Row() {
-                  Image($r('app.media.github'))
-                    .width(20).height(20).margin({ right: 8 })
-                    .fillColor($r('sys.color.ohos_id_color_text_primary'))
-                  Text('项目地址')
-                    .fontSize(16)
-                    .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                }
-                Blank()
-                Image($r('app.media.arrow_right'))
-                  .width(16).height(16)
-                  .fillColor($r('sys.color.ohos_id_color_text_tertiary'))
+                Image($r('app.media.github'))
+                  .width(20).height(20).margin({ right: 10 })
+                  .fillColor($r('app.color.primary_text'))
+                this.SettingTexts('项目地址', '在 GitHub 上查看源码')
+                this.Chevron()
               }
-              .width('100%').padding(12)
+              .width('100%').padding({ left: 16, right: 16, top: 13, bottom: 13 })
               .onClick(() => {
                 this.openUrl('https://github.com/ASCII-58/chaoxingsignfacker')
               })
             }
-            .backgroundColor($r('sys.color.ohos_id_color_list_card_bg'))
+            .backgroundColor($r('app.color.card_background'))
             .borderRadius(16)
           }
         }
       }
       .width('100%').layoutWeight(1)
-      .padding({ left: 16, right: 16 })
+      .padding({ left: 16, right: 16, bottom: 24 })
+      .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
     }
     .width('100%').height('100%')
-    .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
+    .backgroundColor($r('app.color.page_background'))
     .borderRadius({ topLeft: 20, topRight: 20 })
   }
 }
