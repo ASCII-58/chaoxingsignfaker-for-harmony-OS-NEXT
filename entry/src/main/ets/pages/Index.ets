@@ -4,7 +4,7 @@ import image from '@ohos.multimedia.image';
 import { ClassInfo, CourseAndActivity } from '../utils/classFun';
 import { scanBarcode, scanCore } from '@kit.ScanKit';
 import { curves, UIContext } from '@kit.ArkUI';
-import { hdsEffect } from '@kit.UIDesignKit';
+import { hdsEffect, HdsTabs, HdsTabsController, HdsTabsBackgroundStyle } from '@kit.UIDesignKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import promptAction from '@ohos.promptAction';
@@ -364,12 +364,13 @@ export default struct HomePage {
   @State btnAddPressed: boolean = false;
   @State actionPressed: string = '';
   @State installInfo: string = '';
+  @State tabLabelScale: number[] = [1, 1];
   @StorageLink('userHostName') userHostName: Resource | string = $r('app.string.defaultUname')
   @StorageLink('userHostPhone') userHostPhone: Resource | string = $r('app.string.defaultPhone')
   @StorageLink('userUrl') userUrl: string = ''
   @StorageLink('userQRValue') userQRValue: string = ''
   private pageInfos: NavPathStack = new NavPathStack();
-  private controller: TabsController = new TabsController();
+  private controller: HdsTabsController = new HdsTabsController();
   private openLinkContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
 
   @Builder tabBuilder(title: string, targetIndex: number) {
@@ -378,7 +379,11 @@ export default struct HomePage {
         .fontColor(this.currentIndex === targetIndex ? $r('sys.color.font_emphasize') : $r('sys.color.font_primary'))
         .fontWeight(this.currentIndex === targetIndex ? FontWeight.Bold : FontWeight.Regular)
         .fontSize(this.currentIndex === targetIndex ? $r('sys.float.Caption_L') : $r('sys.float.Caption_M'))
-        .onClick(() => { this.currentIndex = targetIndex; this.controller.changeIndex(targetIndex); })
+        .scale({
+          x: this.tabLabelScale[targetIndex] ?? 1,
+          y: this.tabLabelScale[targetIndex] ?? 1
+        })
+        .onClick(() => { this.switchTab(targetIndex); })
       if (this.currentIndex === targetIndex) {
         Divider().strokeWidth(2).color($r('sys.color.icon_emphasize')).width(20).margin({ top: 4 })
       }
@@ -485,7 +490,7 @@ export default struct HomePage {
 
   build() {
     NavDestination() {
-      Tabs({ controller: this.controller, index: this.currentIndex }) {
+      HdsTabs({ barPosition: BarPosition.End, index: this.currentIndex, controller: this.controller }) {
         TabContent() {
           List({ space: 0 }) {
             ListItem() {
@@ -505,6 +510,7 @@ export default struct HomePage {
           }
           .divider({ strokeWidth: 0.5, color: $r('sys.color.comp_divider'), startMargin: 72, endMargin: 16 })
           .width('100%').scrollBar(BarState.Off)
+          .padding({ bottom: 64 }) // barOverlap 内容穿透：末项不被页签栏遮挡
         }
         .height('100%').width('100%')
         .tabBar($r('app.string.class_list'))
@@ -583,7 +589,7 @@ export default struct HomePage {
               .padding({ left: 4, right: 4 })
             }
 
-            Row().height(20).width('100%').backgroundColor($r('app.color.page_background'))
+            Row().height(64).width('100%').backgroundColor($r('app.color.page_background')) // barOverlap 避让页签栏
           }
           .width('100%').height('100%')
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
@@ -595,11 +601,16 @@ export default struct HomePage {
         }
         .tabBar($r('app.string.user'))
       }
-      .height('100%').barWidth('100%').barHeight(50).vertical(false)
-      .barPosition(BarPosition.End).backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THIN)
-      .fadingEdge(true).barMode(BarMode.Fixed).animationDuration(0)
+      .height('100%').vertical(false)
+      .barMode(BarMode.Fixed)
+      .animationDuration(350) // 6.1 沉浸式页签：平滑内容过渡
+      .barOverlap(true) // 内容穿透：列表从页签栏下滚动穿过
+      .barBackgroundStyle({ maskColor: $r('app.color.page_background') }) // 页签栏下渐隐遮罩
+      .onTabBarClick(() => {
+        this.popCurrentTabLabel();
+      })
       .backgroundColor($r('app.color.page_background'))
-      .divider({ strokeWidth: '1px', color: $r('sys.color.comp_divider') }).scrollable(false)
+      .scrollable(false)
       .onChange((index) => {
         this.titleName = index === 0 ? '首页' : '用户中心'
         this.currentIndex = index
@@ -639,6 +650,31 @@ export default struct HomePage {
       if (this.currentIndex === 1) { this.currentIndex = 0; this.controller.changeIndex(0); return true; }
       return true;
     })
+  }
+
+  /**
+   * 切换标签页：弹性缩放反馈 + 平滑内容过渡
+   */
+  private switchTab(targetIndex: number) {
+    if (this.currentIndex === targetIndex) {
+      return;
+    }
+    animateTo({ curve: curves.springMotion(0.32, 0.85) }, () => {
+      this.currentIndex = targetIndex;
+      this.controller.changeIndex(targetIndex);
+    });
+    this.popCurrentTabLabel();
+  }
+
+  /**
+   * 当前选中页签文字的弹性回弹动效
+   */
+  private popCurrentTabLabel() {
+    const idx = this.currentIndex;
+    this.tabLabelScale[idx] = 1.15;
+    animateTo({ curve: curves.springMotion(0.32, 0.85) }, () => {
+      this.tabLabelScale[idx] = 1;
+    });
   }
 
   private async loadInstallInfo() {
