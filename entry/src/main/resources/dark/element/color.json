@@ -79,6 +79,10 @@
     {
       "name": "text_placeholder",
       "value": "#6E7681"
+    },
+    {
+      "name": "primary_button",
+      "value": "#4D8DF7"
     }
   ]
 }

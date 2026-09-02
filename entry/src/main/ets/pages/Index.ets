@@ -496,7 +496,7 @@ export default struct HomePage {
                 .geometryTransition('SEARCH_ONE_SHOT_DEMO_TRANSITION_ID', { follow: true })
                 .shadow({ radius: 6, color: '#00000020', offsetX: 0, offsetY: 2 })
                 .onTouch((event: TouchEvent) => { if (event.type === TouchType.Up) this.showSearchPage(); })
-            }.width('100%').padding({ left: 16, right: 16, top: 56, bottom: 12 })
+            }.width('100%').padding({ left: 16, right: 16, top: 56, bottom: 12 }) // STACK 标题栏为悬浮式，56 为其让位
 
             ForEach(this.classList, (classInfo: ClassInfo, index: number) => {
               ListItem() { ClassListItem({ classInfo: classInfo }) }.width('100%')
@@ -522,7 +522,7 @@ export default struct HomePage {
               QRvalue: this.userQRValue,
               onLogout: () => { this.showLogoutDialog() }
             })
-              .margin({ top: 48 })
+              .margin({ top: 56 }) // STACK 标题栏为悬浮式，56 为其让位
 
             Row().height(10).width('100%').backgroundColor($r('app.color.page_background'))
 
@@ -564,8 +564,8 @@ export default struct HomePage {
 
             Row().height(10).width('100%').backgroundColor($r('app.color.page_background'))
 
-            Column() {
-              if (this.installInfo !== '') {
+            if (this.installInfo !== '') {
+              Column() {
                 Row() {
                   Text('使用时长')
                     .fontSize(16)
@@ -577,10 +577,11 @@ export default struct HomePage {
                 }
                 .width('100%').padding(12)
               }
+              .width('100%')
+              .backgroundColor($r('app.color.card_background'))
+              .borderRadius(16)
+              .padding({ left: 4, right: 4 })
             }
-            .backgroundColor($r('app.color.card_background'))
-            .borderRadius(16)
-            .padding({ left: 4, right: 4 })
 
             Row().height(20).width('100%').backgroundColor($r('app.color.page_background'))
           }

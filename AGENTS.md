@@ -54,6 +54,7 @@
 - Device install requires signing; dev uses test certificate
 - `.editorconfig`: indent 2 spaces, max_line_length 120 for `.ets`/`.ts`/`.js`
 - ArkTS gotchas hit before: function-type props must be optional (`onX?:`); `Object.assign`/object-spread restricted; `ImagePacker.packToData` (not pack); `fs.OpenMode.TRUNC` (not TRUNCATE); a `@Prop` cannot be named `enabled`
+- NavDestination `.title(..., {barStyle: STACK})` renders a FLOATING title bar: page content starts at the very top of the screen and must offset itself (课程 Tab 搜索框 padding-top 56、用户中心 margin-top 56 都是在给标题栏让位，勿"清理"成 8/16)
 
 ---
 

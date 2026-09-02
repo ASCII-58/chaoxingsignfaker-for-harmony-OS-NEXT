@@ -148,16 +148,24 @@ export default struct Login {
     NavDestination(){
       Scroll() {
         Column() {
-          Column().height('15%')
+          Column().height('12%')
 
-          Text('学习通账号\n登录')
-            .fontSize(40)
-            .fontWeight(FontWeight.Bold)
-            .textAlign(TextAlign.Center)
-            .width('90%')
-            .margin({ bottom: 40 })
-            .opacity(this.titleOpacity)
-            .translate({ y: this.titleTranslateY })
+          Column() {
+            Text('学习通账号登录')
+              .fontSize(32)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.primary_text'))
+              .lineHeight(40)
+            Text('使用超星学习通账号登录，管理你的课程签到')
+              .fontSize(14)
+              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+              .margin({ top: 8 })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .width('90%')
+          .margin({ bottom: 40 })
+          .opacity(this.titleOpacity)
+          .translate({ y: this.titleTranslateY })
 
           Column({ space: 24 }) {
             FloatingTextInput({
@@ -193,10 +201,10 @@ export default struct Login {
               Row() {
                 if (this.isLoading) {
                   LoadingProgress().width(24).height(24).color($r('app.color.text_on_primary')).margin({ right: 10 })
-                  Text('登录中...').fontColor($r('sys.color.ohos_id_color_text_primary_activated')).fontSize(18)
+                  Text('登录中...').fontColor($r('app.color.text_on_primary')).fontSize(18)
                     .fontWeight(FontWeight.Medium)
                 } else {
-                  Text('登录').fontColor($r('sys.color.ohos_id_color_text_primary_activated')).fontSize(18)
+                  Text('登录').fontColor($r('app.color.text_on_primary')).fontSize(18)
                     .fontWeight(FontWeight.Medium)
                 }
               }
@@ -204,8 +212,8 @@ export default struct Login {
             .type(ButtonType.Capsule)
             .enabled(this.LoginEnable && !this.isLoading)
             .width('100%')
-            .height(56)
-            .backgroundColor($r('sys.color.ohos_id_color_button_normal'))
+            .height(48)
+            .backgroundColor($r('app.color.primary_button'))
             .shadow({ radius: 10, color: 'rgba(10, 89, 247, 0.2)', offsetY: 5 })
             .onClick(() => {
               this.handleLogin()
