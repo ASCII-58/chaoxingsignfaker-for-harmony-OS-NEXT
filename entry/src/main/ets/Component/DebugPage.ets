@@ -3,8 +3,11 @@ import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { image } from '@kit.ImageKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DatabaseManager } from '../utils/DataBase';
 import { OnnxRunner, OnnxInput, OnnxOutput } from '../utils/onnx/OnnxRunner';
+
+const ONNX_TEST_TAG = 'OnnxTest';
 
 const SIGN_TIME = 'sign_time';
 const VERSION = 'version';
@@ -134,6 +137,7 @@ export struct DebugPage {
   }
 
   async runOnnxTest() {
+    hilog.info(0x0000, ONNX_TEST_TAG, 'runOnnxTest invoked, running=%{public}s', String(this.onnxRunning));
     if (this.onnxRunning) {
       return;
     }
@@ -144,14 +148,18 @@ export struct DebugPage {
       if (this.runner === undefined) {
         this.onnxStatus = '正在加载模型...';
         this.runner = await OnnxRunner.fromRawfile(this.context, MODEL_RAWFILE);
+        hilog.info(0x0000, ONNX_TEST_TAG, 'session created, %{public}d ms', Date.now() - start);
       }
       const prepared = await this.prepareModelInput();
+      hilog.info(0x0000, ONNX_TEST_TAG, 'input prepared, %{public}d ms', Date.now() - start);
       this.onnxStatus =
         `ORT ${OnnxRunner.getRuntimeVersion()}，输入: ${this.runner.getInputNames().join(',')}`;
       const outputs = this.runner.run(prepared.inputs);
+      hilog.info(0x0000, ONNX_TEST_TAG, 'run done, %{public}d ms', Date.now() - start);
       this.onnxResult = this.decodeOutput(outputs, prepared.canvasLength, Date.now() - start);
     } catch (e) {
       const err = e as BusinessError;
+      hilog.error(0x0000, ONNX_TEST_TAG, 'test failed: %{public}s', err.message);
       this.onnxResult = `测试失败: ${err.message}`;
     } finally {
       this.onnxRunning = false;
