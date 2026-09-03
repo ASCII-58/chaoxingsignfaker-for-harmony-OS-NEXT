@@ -86,6 +86,7 @@ export struct ActivityListPage {
   @State ActivityList: ActivityItem[] | null = null
   @State activityExt: string = ''
   @State isRefreshing: boolean = false
+  private loadEpoch: number = 0 // 每次拉取递增：让 ForEach 生成新 key，强制重建条目
 
   build() {
     NavDestination() {
@@ -157,7 +158,7 @@ export struct ActivityListPage {
                 this.pathInfos.pushPath({ name: 'SignerPage', param: activityInfo })
               })
             }
-          }, (Activity: ActivityItem) => Activity.id)
+          }, (Activity: ActivityItem) => `${this.loadEpoch}_${Activity.id}`)
         }
         .divider({ strokeWidth: 0.5, color: $r('sys.color.comp_divider'), startMargin: 72, endMargin: 16 })
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
@@ -232,6 +233,7 @@ export struct ActivityListPage {
       }
       hilog.debug(DOMAIN, TAG, 'Loading activity list');
       const activityResult = await CourseAndActivity.getActivityList(cookies, this.classId, this.courseId);
+      this.loadEpoch++ // key 变化后条目全部重建，签到状态/倒计时随之更新
       this.ActivityList = activityResult ? activityResult.activities : null;
       this.activityExt = activityResult ? activityResult.ext : '';
       hilog.debug(DOMAIN, TAG, `Activity list loaded: ${this.ActivityList ? 'success' : 'failed'}`);

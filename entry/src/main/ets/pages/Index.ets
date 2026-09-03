@@ -356,6 +356,7 @@ export default struct HomePage {
   @State currentIndex: number = 0;
   @State titleName: string = '首页';
   @State classList: ClassInfo[] | null = null;
+  @State isClassListRefreshing: boolean = false;
   @State otherUserList: UserDataAndId[] = [];
   @State expandedSection: number = -1;
   @State loginSheetVisible: boolean = false;
@@ -369,6 +370,7 @@ export default struct HomePage {
   @StorageLink('userUrl') userUrl: string = ''
   @StorageLink('userQRValue') userQRValue: string = ''
   private pageInfos: NavPathStack = new NavPathStack();
+  private classListLoading: boolean = false;
   private controller: HdsTabsController = new HdsTabsController();
   private openLinkContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
 
@@ -491,31 +493,34 @@ export default struct HomePage {
     NavDestination() {
       HdsTabs({ barPosition: BarPosition.End, index: this.currentIndex, controller: this.controller }) {
         TabContent() {
-          List({ space: 0 }) {
-            ListItem() {
-              Search({ placeholder: '搜索课程...' })
-                .height(44).borderRadius(20)
-                .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
-                .placeholderColor($r('sys.color.ohos_id_color_text_secondary'))
-                .geometryTransition('SEARCH_ONE_SHOT_DEMO_TRANSITION_ID', { follow: true })
-                .shadow({ radius: 6, color: '#00000020', offsetX: 0, offsetY: 2 })
-                .onTouch((event: TouchEvent) => { if (event.type === TouchType.Up) this.showSearchPage(); })
-            }.width('100%').padding({ left: 16, right: 16, top: 56, bottom: 12 }) // STACK 标题栏为悬浮式，56 为其让位
+          Refresh({ refreshing: $$this.isClassListRefreshing }) {
+            List({ space: 0 }) {
+              ListItem() {
+                Search({ placeholder: '搜索课程...' })
+                  .height(44).borderRadius(20)
+                  .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
+                  .placeholderColor($r('sys.color.ohos_id_color_text_secondary'))
+                  .geometryTransition('SEARCH_ONE_SHOT_DEMO_TRANSITION_ID', { follow: true })
+                  .shadow({ radius: 6, color: '#00000020', offsetX: 0, offsetY: 2 })
+                  .onTouch((event: TouchEvent) => { if (event.type === TouchType.Up) this.showSearchPage(); })
+              }.width('100%').padding({ left: 16, right: 16, top: 56, bottom: 12 }) // STACK 标题栏为悬浮式，56 为其让位
 
-            ForEach(this.classList, (classInfo: ClassInfo, index: number) => {
-              ListItem() { ClassListItem({ classInfo: classInfo }) }.width('100%')
-              .onClick(() => { this.pageInfos.pushPath({ name: 'ActivityListPage', param: classInfo }); })
-            }, (classInfo: ClassInfo) => classInfo.id)
+              ForEach(this.classList, (classInfo: ClassInfo, index: number) => {
+                ListItem() { ClassListItem({ classInfo: classInfo }) }.width('100%')
+                .onClick(() => { this.pageInfos.pushPath({ name: 'ActivityListPage', param: classInfo }); })
+              }, (classInfo: ClassInfo) => classInfo.id)
+            }
+            .divider({ strokeWidth: 0.5, color: $r('sys.color.comp_divider'), startMargin: 72, endMargin: 16 })
+            .width('100%').height('100%').scrollBar(BarState.Off) // 高度占满:课程未加载/数量过少时列表不收缩居中,搜索框保持在悬浮标题栏下方
+            .padding({ bottom: 64 }) // barOverlap 内容穿透：末项不被页签栏遮挡
           }
-          .divider({ strokeWidth: 0.5, color: $r('sys.color.comp_divider'), startMargin: 72, endMargin: 16 })
-          .width('100%').height('100%').scrollBar(BarState.Off) // 高度占满:课程未加载/数量过少时列表不收缩居中,搜索框保持在悬浮标题栏下方
-          .padding({ bottom: 64 }) // barOverlap 内容穿透：末项不被页签栏遮挡
+          .width('100%').height('100%')
+          .onRefreshing(async () => { await this.loadClassList(); }) // 仅下滑刷新：下拉触发课程列表重新拉取
         }
         .height('100%').width('100%')
         .tabBar($r('app.string.class_list'))
         .onAppear(async () => {
-          const cookies = (await this.getHostUser()).cookies
-          this.classList = (await CourseAndActivity.getClassList(cookies)).classList
+          await this.loadClassList();
         })
 
         TabContent() {
@@ -646,6 +651,7 @@ export default struct HomePage {
 
     .onBackPressed(() => {
       if (this.currentIndex === 1) { this.currentIndex = 0; this.controller.changeIndex(0); return true; }
+      this.openLinkContext.moveAbilityToBackground(); // 首页返回：退回桌面（应用移至后台）
       return true;
     })
   }
@@ -673,6 +679,34 @@ export default struct HomePage {
     animateTo({ curve: curves.springMotion(0.32, 0.85) }, () => {
       this.tabLabelScale[idx] = 1;
     });
+  }
+
+  /**
+   * 拉取课程列表(首载与下拉刷新共用)；下拉刷新失败时给出提示并保留原列表
+   */
+  private async loadClassList(): Promise<void> {
+    if (this.classListLoading) {
+      this.isClassListRefreshing = false // 已有拉取在进行，直接收起下拉指示器
+      return
+    }
+    this.classListLoading = true
+    try {
+      const cookies = (await this.getHostUser()).cookies
+      const result = await CourseAndActivity.getClassList(cookies)
+      if (result.msg) {
+        this.classList = result.classList
+      } else if (this.isClassListRefreshing) {
+        promptAction.showToast({ message: '课程列表刷新失败' })
+      }
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `Failed to load class list: ${(e as Error).message}`)
+      if (this.isClassListRefreshing) {
+        promptAction.showToast({ message: '课程列表刷新失败' })
+      }
+    } finally {
+      this.classListLoading = false
+      this.isClassListRefreshing = false
+    }
   }
 
   private async loadInstallInfo() {
