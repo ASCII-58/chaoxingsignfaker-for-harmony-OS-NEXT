@@ -15,7 +15,9 @@ const SIGN_EXPIRY_MS = 12 * 30 * 24 * 60 * 60 * 1000;
 const BACKUP_REMINDER_MS = 11 * 30 * 24 * 60 * 60 * 1000;
 
 // captcha 滑块检测模型测试（model/captcha，预处理与解码逻辑与 captcha.py 一致）
-const MODEL_RAWFILE = 'models/captcha_fp16.onnx';
+// v2 = ir_version 9 + fp16 Softmax 展开为 fp32 三明治（ORT 1.16.3 兼容）；
+// 换文件名以绕过沙箱内旧模型的缓存
+const MODEL_RAWFILE = 'models/captcha_fp16_v2.onnx';
 const IMAGE_RAWFILE = 'models/test.jpg';
 const INPUT_SIZE = 640;
 const SCORE_THRESHOLD = 0.25;
@@ -24,6 +26,18 @@ const X_OFFSET_MARGIN = 4;
 interface OnnxTestInput {
   inputs: OnnxInput[];
   canvasLength: number;
+}
+
+interface OnnxModelResult {
+  label: string;
+  score: number;
+  xOffset: number;
+  boxStr: string;
+  outputName: string;
+  dimsStr: string;
+  sessionMs: number;
+  inferMs: number;
+  detected: boolean;
 }
 
 @Component
@@ -41,10 +55,7 @@ export struct DebugPage {
   }
 
   aboutToDisappear() {
-    if (this.runner !== undefined) {
-      this.runner.close();
-      this.runner = undefined;
-    }
+    // 共享会话进程级常驻（OnnxRunner.getShared），不在此处关闭
   }
 
   async loadInfo() {
@@ -147,8 +158,9 @@ export struct DebugPage {
       const start = Date.now();
       if (this.runner === undefined) {
         this.onnxStatus = '正在加载模型...';
-        this.runner = await OnnxRunner.fromRawfile(this.context, MODEL_RAWFILE);
-        hilog.info(0x0000, ONNX_TEST_TAG, 'session created, %{public}d ms', Date.now() - start);
+        // 共享会话：首次创建（约 66ms），之后复用（0ms）
+        this.runner = await OnnxRunner.getShared(this.context, MODEL_RAWFILE);
+        hilog.info(0x0000, ONNX_TEST_TAG, 'session ready (shared), %{public}d ms', Date.now() - start);
       }
       const prepared = await this.prepareModelInput();
       hilog.info(0x0000, ONNX_TEST_TAG, 'input prepared, %{public}d ms', Date.now() - start);
@@ -177,23 +189,9 @@ export struct DebugPage {
     await pixelMap.readPixelsToBuffer(rgba.buffer as ArrayBuffer);
 
     // 与 captcha.py 一致：方形画布右/下补黑 → 整体缩到 640x640 → RGB /255 → CHW
+    // （native 实现，结果与原 ArkTS 逐像素循环逐位一致）
     const canvasLength = Math.max(width, height);
-    const ratio = canvasLength / INPUT_SIZE;
-    const planeSize = INPUT_SIZE * INPUT_SIZE;
-    const input = new Float32Array(3 * planeSize);
-    for (let y = 0; y < INPUT_SIZE; y++) {
-      const sy = Math.min(Math.floor(y * ratio), canvasLength - 1);
-      for (let x = 0; x < INPUT_SIZE; x++) {
-        const sx = Math.min(Math.floor(x * ratio), canvasLength - 1);
-        const base = y * INPUT_SIZE + x;
-        if (sx < width && sy < height) {
-          const idx = (sy * width + sx) * 4;
-          input[base] = rgba[idx] / 255;
-          input[planeSize + base] = rgba[idx + 1] / 255;
-          input[2 * planeSize + base] = rgba[idx + 2] / 255;
-        } // 画布补黑区保持 0
-      }
-    }
+    const input = OnnxRunner.preprocessImage(rgba, width, height);
     pixelMap.release();
     source.release();
     return {

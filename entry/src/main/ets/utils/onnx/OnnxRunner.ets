@@ -35,13 +35,37 @@ const MODEL_DIR = 'onnx_models';
 export class OnnxRunner {
   private handle: number;
 
+  /** 进程级共享会话池：同一模型只创建一次（建会话约 66ms，签到场景应摊平为 0） */
+  private static sharedMap: Map<string, OnnxRunner> = new Map();
+
   private constructor(handle: number) {
     this.handle = handle;
+  }
+
+  /**
+   * 获取进程级共享会话（按模型路径缓存）。首次调用创建（含模型拷贝到沙箱），之后复用。
+   * 注意：共享会话不随页面销毁释放，应用生命周期内常驻。
+   */
+  static async getShared(context: common.Context, rawfilePath: string): Promise<OnnxRunner> {
+    let runner = OnnxRunner.sharedMap.get(rawfilePath);
+    if (runner === undefined) {
+      runner = await OnnxRunner.fromRawfile(context, rawfilePath);
+      OnnxRunner.sharedMap.set(rawfilePath, runner);
+    }
+    return runner;
   }
 
   /** onnxruntime 版本号，如 "1.29.0" */
   static getRuntimeVersion(): string {
     return native.getVersion();
+  }
+
+  /**
+   * native 图像预处理：RGBA → 640×640 CHW float32（方形补黑 + 最近邻 + /255）。
+   * 与原 ArkTS 逐像素循环结果逐位一致，速度快一个数量级。
+   */
+  static preprocessImage(rgba: Uint8Array, srcWidth: number, srcHeight: number): Float32Array {
+    return native.preprocessImage(rgba, srcWidth, srcHeight);
   }
 
   /**

@@ -140,6 +140,10 @@ struct UserInfoComponent {
 
   @Builder UnifiedSheet() {
     if (this.activeSheet === -2) {
+      // // 半屏弹层拖拽指示条
+      // Column()
+      //   .width(36).height(4).borderRadius(2)
+      //   .margin({ top: 10 })
       Column() {
         Text('输入调试密码')
           .fontSize(24).fontWeight(FontWeight.Bold)
@@ -176,6 +180,10 @@ struct UserInfoComponent {
       SettingsComponent()
     } else if (this.activeSheet === 1) {
       Column() {
+        // 半屏弹层拖拽指示条
+        Column()
+          .width(36).height(4).borderRadius(2)
+          .margin({ top: 10 })
         Text('二维码名片').fontSize(24).fontWeight(FontWeight.Bold)
           .width('100%').textAlign(TextAlign.Start).padding({ left: 20, bottom: 20 })
         if (this.QRvalue) {

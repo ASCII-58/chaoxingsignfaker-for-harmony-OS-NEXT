@@ -257,7 +257,6 @@ export struct SettingsComponent {
       // 半屏弹层拖拽指示条
       Column()
         .width(36).height(4).borderRadius(2)
-        .backgroundColor($r('sys.color.comp_divider'))
         .margin({ top: 10 })
 
       Text('设置')
