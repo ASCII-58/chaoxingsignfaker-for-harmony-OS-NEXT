@@ -109,7 +109,7 @@ export class OnnxRunner {
     if (fs.accessSync(modelPath)) {
       return modelPath; // 沙箱已有一份，直接复用；更新模型请换文件名或清应用数据
     }
-    const content = context.resourceManager.getRawFileContent(rawfilePath);
+    const content = context.resourceManager.getRawFileContentSync(rawfilePath);
     const file = fs.openSync(modelPath,
       fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
     try {

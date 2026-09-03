@@ -131,6 +131,13 @@ struct UserInfoComponent {
     })
   }
 
+  openDebugSheet() {
+    this.avatarTapCount = 0
+    this.debugPwdInput = ''
+    this.activeSheet = -2
+    this.sheetVisible = true
+  }
+
   @Builder UnifiedSheet() {
     if (this.activeSheet === -2) {
       Column() {
@@ -223,15 +230,14 @@ struct UserInfoComponent {
         .onClick(() => {
           this.avatarTapCount++;
           clearTimeout(this.avatarTapTimer);
-          if (this.avatarTapCount >= 10) {
-            this.avatarTapCount = 0;
-            this.debugPwdInput = '';
-            this.activeSheet = -2;
-            this.sheetVisible = true;
+          if (this.avatarTapCount >= 5) {
+            this.openDebugSheet();
           } else {
-            this.avatarTapTimer = setTimeout(() => { this.avatarTapCount = 0; }, 2000);
+            this.avatarTapTimer = setTimeout(() => { this.avatarTapCount = 0; }, 1500);
           }
         })
+        .gesture(LongPressGesture({ repeat: false, duration: 800 })
+          .onAction(() => { this.openDebugSheet(); }))
       Column() {
         Text(this.hostName).fontSize(18).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.primary_text')).maxLines(1)
