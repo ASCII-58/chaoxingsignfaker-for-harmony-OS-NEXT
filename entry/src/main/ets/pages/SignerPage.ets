@@ -69,7 +69,26 @@ export struct SignPage {
         }
         .onClick(() => {
           if (user.SignPermission === -1) {
-            promptAction.showToast({ message: '该用户不在班级', duration: 1500 })
+            // 无权限用户支持强制重签：已选中则直接取消，未选中需确认后跳过预检加入
+            if (this.signIdArray.includes(user.id)) {
+              this.signIdArray = this.signIdArray.filter(num => num !== user.id)
+              return
+            }
+            AlertDialog.show({
+              title: '强制重签',
+              message: `${user.uname} 无签到权限（可能不在该班级），将跳过预检直接尝试签到，可能失败，是否继续？`,
+              primaryButton: {
+                value: '取消',
+                action: () => {
+                }
+              },
+              secondaryButton: {
+                value: '强制重签',
+                action: () => {
+                  this.signIdArray.push(user.id)
+                }
+              }
+            })
             return
           }
           if (user.SignPermission === 2) {

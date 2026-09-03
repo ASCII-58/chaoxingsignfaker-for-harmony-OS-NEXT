@@ -74,7 +74,7 @@ export struct userItem {
     if (this.user.SignPermission === 2) {
       return '已截止';
     }
-    return '无权限';
+    return '无权限(可强制重签)';
   }
 
   build() {
