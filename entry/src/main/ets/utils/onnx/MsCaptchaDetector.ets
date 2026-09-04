@@ -1,6 +1,9 @@
 import { mindSporeLite } from '@kit.MindSporeLiteKit';
 import { image } from '@kit.ImageKit';
 import { common } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { OnnxRunner, OnnxOutput } from './OnnxRunner';
 import { CaptchaDetector } from './CaptchaDetector';
 
@@ -9,6 +12,8 @@ import { CaptchaDetector } from './CaptchaDetector';
 // 仅推理后端不同，用于对比验证两个后端的结果一致性与耗时。
 const MODEL_RAWFILE = 'models/captcha_fp16_v2.ms';
 
+const MS_TAG = 'MsCaptchaDetector';
+
 /**
  * MindSpore Lite 滑块检测封装：输入一张图片，输出一个数值（滑块 x 偏移，原图坐标）。
  * 与 CaptchaDetector.detect 同语义；未检测到滑块返回 -1。
@@ -16,6 +21,8 @@ const MODEL_RAWFILE = 'models/captcha_fp16_v2.ms';
  */
 export class MsCaptchaDetector {
   private static model: mindSporeLite.Model | undefined = undefined;
+  private static appContext: common.Context | undefined = undefined;
+  private static dumped: boolean = false;
 
   /**
    * 加载（并缓存）MindSpore Lite 模型。
@@ -25,6 +32,7 @@ export class MsCaptchaDetector {
     if (MsCaptchaDetector.model !== undefined) {
       return 0;
     }
+    MsCaptchaDetector.appContext = context;
     const buf = context.resourceManager.getRawFileContentSync(MODEL_RAWFILE);
     // 注意：第二个参数是 mindSporeLite.Context（设备配置），不是 UIAbilityContext
     const msContext: mindSporeLite.Context = { target: ['cpu'] };
@@ -75,7 +83,75 @@ export class MsCaptchaDetector {
     }
     inputTensor.setData(input.buffer as ArrayBuffer);
     const outputs = await model.predict(inputs);
-    return CaptchaDetector.decode(MsCaptchaDetector.wrapOutputs(outputs), canvasLength);
+    for (let i = 0; i < outputs.length; i++) {
+      const t = outputs[i];
+      hilog.info(0x0000, MS_TAG,
+        'out[%{public}d] name=%{public}s shape=%{public}s dtype=%{public}d num=%{public}d',
+        i, t.name, JSON.stringify(t.shape), t.dtype, t.elementNum);
+    }
+    const decoded = CaptchaDetector.decode(MsCaptchaDetector.wrapOutputs(outputs), canvasLength);
+    // 诊断 dump：把首次推理的输入/输出原样写进 cacheDir，供 PC 端比对内存布局
+    if (!MsCaptchaDetector.dumped && MsCaptchaDetector.appContext !== undefined) {
+      MsCaptchaDetector.dumped = true;
+      try {
+        const dir = MsCaptchaDetector.appContext.cacheDir;
+        const fi = fs.openSync(dir + '/ms_dump_input.bin',
+          fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+        fs.writeSync(fi.fd, input.buffer as ArrayBuffer);
+        fs.closeSync(fi);
+        for (let i = 0; i < outputs.length; i++) {
+          const fo = fs.openSync(dir + '/ms_dump_output_' + i + '.bin',
+            fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+          fs.writeSync(fo.fd, outputs[i].getData());
+          fs.closeSync(fo);
+          hilog.info(0x0000, MS_TAG, 'dump out[%{public}d] shape=%{public}s elems=%{public}d',
+            i, JSON.stringify(outputs[i].shape), outputs[i].elementNum);
+        }
+        hilog.info(0x0000, MS_TAG, 'dumped %{public}d outputs to %{public}s', outputs.length, dir);
+      } catch (e) {
+        hilog.error(0x0000, MS_TAG, 'dump failed: %{public}s', (e as BusinessError).message);
+      }
+    }
+    // 诊断：官方 decode 假设 channel-major（pred[c*anchors+i]）；若 MS 内存布局是
+    // anchor-major（pred[i*5+c]），按两种布局分别取最高分框，对比哪个等于 ONNX 结果
+    const t0 = outputs[0];
+    if (t0 !== undefined && t0.shape.length === 3 && t0.shape[1] === 5) {
+      const anchors = t0.shape[2];
+      let arr: Float32Array;
+      if (t0.dtype === mindSporeLite.DataType.NUMBER_TYPE_FLOAT16) {
+        const src = new Uint16Array(t0.getData());
+        const dst = new Float32Array(src.length);
+        for (let i = 0; i < src.length; i++) {
+          dst[i] = MsCaptchaDetector.fp16ToFp32(src[i]);
+        }
+        arr = dst;
+      } else {
+        arr = new Float32Array(t0.getData());
+      }
+      let cBest = -1, cScore = 0;
+      for (let i = 0; i < anchors; i++) {
+        const s = arr[4 * anchors + i];
+        if (s > cScore) { cScore = s; cBest = i; }
+      }
+      const cCx = cBest >= 0 ? arr[cBest] : -1;
+      const cBw = cBest >= 0 ? arr[2 * anchors + cBest] : -1;
+      const cX = cBest >= 0
+        ? Math.trunc((cCx - 0.5 * cBw) * (canvasLength / 640) - 4 + 0.5) : -1;
+      let aBest = -1, aScore = 0;
+      for (let i = 0; i < anchors; i++) {
+        const s = arr[i * 5 + 4];
+        if (s > aScore) { aScore = s; aBest = i; }
+      }
+      const aCx = aBest >= 0 ? arr[aBest * 5] : -1;
+      const aBw = aBest >= 0 ? arr[aBest * 5 + 2] : -1;
+      const aX = aBest >= 0
+        ? Math.trunc((aCx - 0.5 * aBw) * (canvasLength / 640) - 4 + 0.5) : -1;
+      hilog.info(0x0000, MS_TAG,
+        'layout: official=%{public}s chMaj(x=%{public}s s=%{public}s cx=%{public}s bw=%{public}s) anMaj(x=%{public}s s=%{public}s cx=%{public}s bw=%{public}s)',
+        String(decoded), String(cX), cScore.toFixed(4), cCx.toFixed(2), cBw.toFixed(2),
+        String(aX), aScore.toFixed(4), aCx.toFixed(2), aBw.toFixed(2));
+    }
+    return decoded;
   }
 
   /** MSTensor[] → OnnxOutput[]（fp16 输出转为 fp32，保证共用 ONNX 解码路径） */
