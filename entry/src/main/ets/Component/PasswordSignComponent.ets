@@ -5,6 +5,9 @@ import { LightButton } from './LightButton';
 
 const TAG = 'PasswordSignComponent';
 const DOMAIN = 0x000A;
+// 超星平台签到码为 4-8 位数字
+const MIN_SIGN_CODE_LENGTH = 4;
+const MAX_SIGN_CODE_LENGTH = 8;
 
 /**
  * 签到码签到输入组件（纯输入）：
@@ -16,8 +19,6 @@ export struct PasswordSignComponent {
   @Prop activityId: string;
   /** 主用户 Cookie，仅用于即时校验签到码 */
   @Prop hostCookies: string;
-  /** 签到码位数（0 表示不限制） */
-  @Prop codeLength: number = 0;
   /** 校验通过回传签到码，输入变更/清空回传 '' */
   onSignCode?: (code: string) => void
 
@@ -40,8 +41,8 @@ export struct PasswordSignComponent {
       return;
     }
 
-    if (this.codeLength > 0 && this.signCode.length !== this.codeLength) {
-      promptAction.showToast({ message: `签到码应为${this.codeLength}位` });
+    if (this.signCode.length < MIN_SIGN_CODE_LENGTH) {
+      promptAction.showToast({ message: `签到码为${MIN_SIGN_CODE_LENGTH}-${MAX_SIGN_CODE_LENGTH}位数字` });
       return;
     }
 
@@ -70,23 +71,16 @@ export struct PasswordSignComponent {
 
   build() {
     Column() {
-      if (this.codeLength > 0) {
-        Text(`请输入${this.codeLength}位签到码（为所有勾选用户代签）`)
-          .fontSize(14)
-          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-          .margin({ bottom: 24 })
-      } else {
-        Text('请输入签到码（为所有勾选用户代签）')
-          .fontSize(14)
-          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-          .margin({ bottom: 24 })
-      }
+      Text(`请输入${MIN_SIGN_CODE_LENGTH}-${MAX_SIGN_CODE_LENGTH}位数字签到码（为所有勾选用户代签）`)
+        .fontSize(14)
+        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+        .margin({ bottom: 24 })
 
       // 签到码输入框
       Column() {
         TextInput({ placeholder: '请输入签到码', text: this.signCode })
           .type(InputType.Number)
-          .maxLength(this.codeLength > 0 ? this.codeLength : 10)
+          .maxLength(MAX_SIGN_CODE_LENGTH)
           .width(250)
           .fontSize(20)
           .textAlign(TextAlign.Center)

@@ -70,7 +70,6 @@ export interface SignInfoResult {
   signInId: number;
   signOutId: number;
   signOutPublishTimeStamp: number;
-  numberCount: number;
 }
 
 export function parseSignResult(raw: string): SignOutcome {
@@ -220,8 +219,7 @@ export class Sign {
     return {
       signInId: (jsonResult?.['signInId'] as number) ?? 0,
       signOutId: (jsonResult?.['signOutId'] as number) ?? 0,
-      signOutPublishTimeStamp: signOutPublishTimeStamp === NO_SIGN_OFF_EVENT ? 0 : signOutPublishTimeStamp,
-      numberCount: (jsonResult?.['numberCount'] as number) ?? 0
+      signOutPublishTimeStamp: signOutPublishTimeStamp === NO_SIGN_OFF_EVENT ? 0 : signOutPublishTimeStamp
     };
   }
 
@@ -237,7 +235,6 @@ export class Sign {
       signInId: (data?.['signInId'] as number) ?? 0,
       signOutId: (data?.['signOutId'] as number) ?? 0,
       signOutPublishTimeStamp: signOutPublishTimeStamp === NO_SIGN_OFF_EVENT ? 0 : signOutPublishTimeStamp,
-      numberCount: (data?.['numberCount'] as number) ?? 0,
       ifNeedVCode: (data?.['ifNeedVCode'] as number) ?? 0,
       openCheckFaceFlag: (data?.['openCheckFaceFlag'] as number) ?? 0,
       ifphoto: (data?.['ifphoto'] as boolean) ?? false,

@@ -305,7 +305,6 @@ export struct SignPage {
         PasswordSignComponent({
           activityId: this.activityInfo?.ActivityId || '',
           hostCookies: this.hostCookies,
-          codeLength: this.signDetail?.numberCount || 0,
           onSignCode: (code: string) => {
             this.pendingSignCode = code
           }
