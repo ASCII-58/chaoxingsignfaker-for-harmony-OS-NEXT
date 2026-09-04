@@ -6,8 +6,14 @@ import { preferences, uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { util } from '@kit.ArkTS';
 import { systemShare } from '@kit.ShareKit';
 import { DatabaseManager } from '../utils/DataBase';
+import { MsCaptchaDetector } from '../utils/detector/MsCaptchaDetector';
 
 const PREF_COLOR_MODE_KEY = 'app_color_mode';
+const PREF_MODEL_CAPTCHA_KEY = 'model_captcha_enabled';
+// 模型测试结果状态：0 未测试 / 1 通过 / 2 失败
+const MODEL_TEST_IDLE = 0;
+const MODEL_TEST_PASSED = 1;
+const MODEL_TEST_FAILED = 2;
 const COLOR_MODE_LABELS = ['自动', '浅色', '深色'];
 const COLOR_MODE_ICONS: Resource[] = [
   $r('app.media.ic_theme_auto'),
@@ -19,12 +25,16 @@ const COLOR_MODE_ICONS: Resource[] = [
 export struct SettingsComponent {
   @State version: string = '';
   @State colorModeIndex: number = 0;
+  @State modelCaptchaEnabled: boolean = false;
+  @State modelTestRunning: boolean = false;
+  @State modelTestState: number = MODEL_TEST_IDLE;
   onImportDone: () => void = () => {};
   private context = getContext(this) as common.UIAbilityContext;
 
   async aboutToAppear() {
     this.getVersion();
     await this.loadColorMode();
+    await this.loadModelCaptcha();
   }
 
   async getVersion() {
@@ -43,6 +53,70 @@ export struct SettingsComponent {
       this.colorModeIndex = await pref.get(PREF_COLOR_MODE_KEY, 0) as number;
     } catch (e) {
       this.colorModeIndex = 0;
+    }
+  }
+
+  async loadModelCaptcha() {
+    try {
+      let pref = await preferences.getPreferences(this.context, 'settings');
+      this.modelCaptchaEnabled = await pref.get(PREF_MODEL_CAPTCHA_KEY, false) as boolean;
+    } catch (e) {
+      this.modelCaptchaEnabled = false;
+    }
+  }
+
+  async saveModelCaptcha(enabled: boolean) {
+    this.modelCaptchaEnabled = enabled;
+    if (!enabled) {
+      this.modelTestState = MODEL_TEST_IDLE;
+    }
+    try {
+      let pref = await preferences.getPreferences(this.context, 'settings');
+      await pref.put(PREF_MODEL_CAPTCHA_KEY, enabled);
+      await pref.flush();
+    } catch (e) {
+      console.error('Failed to save model captcha switch', e);
+    }
+  }
+
+  /** Beta 开关：开启前警告；取消则回弹开关，关闭直接生效 */
+  onModelCaptchaToggle(value: boolean) {
+    if (!value) {
+      this.saveModelCaptcha(false);
+      return;
+    }
+    AlertDialog.show({
+      title: '开启模型自动验证？',
+      message: '该功能处于 Beta 阶段：遇到验证码时将调用本地模型自动完成滑块验证，可能失败或存在误判风险；' +
+        '失败时会退回手动拖动验证。确定开启吗？',
+      primaryButton: {
+        value: '取消',
+        action: () => {
+          this.modelCaptchaEnabled = false;
+        }
+      },
+      secondaryButton: {
+        value: '开启',
+        fontColor: $r('app.color.selected'),
+        action: () => {
+          this.saveModelCaptcha(true);
+        }
+      }
+    });
+  }
+
+  /** 模型可用性测试：仅展示通过/失败，不展示检测细节 */
+  async runModelTest() {
+    if (this.modelTestRunning) {
+      return;
+    }
+    this.modelTestRunning = true;
+    this.modelTestState = MODEL_TEST_IDLE;
+    try {
+      const passed = await MsCaptchaDetector.selfTest(this.context);
+      this.modelTestState = passed ? MODEL_TEST_PASSED : MODEL_TEST_FAILED;
+    } finally {
+      this.modelTestRunning = false;
     }
   }
 
@@ -305,6 +379,59 @@ export struct SettingsComponent {
             }
             .width('100%')
             .alignItems(VerticalAlign.Top)
+          }
+        }
+
+        // 验证码：模型自动验证（Beta）
+        ListItem() {
+          Column() {
+            this.SectionHeader('验证码')
+            Column() {
+              Row() {
+                this.SettingTexts('模型自动验证', '使用本地模型自动完成滑块验证码')
+                Text('Beta')
+                  .fontSize(10)
+                  .fontColor(Color.White)
+                  .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                  .borderRadius(6)
+                  .backgroundColor($r('app.color.beta_badge'))
+                  .margin({ right: 10 })
+                Toggle({ type: ToggleType.Switch, isOn: this.modelCaptchaEnabled })
+                  .selectedColor($r('app.color.selected'))
+                  .onChange((value: boolean) => {
+                    this.onModelCaptchaToggle(value)
+                  })
+              }
+              .width('100%').padding({ left: 16, right: 16, top: 13, bottom: 13 })
+
+              if (this.modelCaptchaEnabled) {
+                this.SettingsDivider()
+
+                Row() {
+                  this.SettingTexts('模型测试', '验证模型可用性与准确度')
+                  Button(this.modelTestRunning ? '测试中...' : '测试')
+                    .fontSize(14)
+                    .height(32)
+                    .padding({ left: 16, right: 16 })
+                    .enabled(!this.modelTestRunning)
+                    .onClick(() => {
+                      this.runModelTest()
+                    })
+                }
+                .width('100%').padding({ left: 16, right: 16, top: 13, bottom: 13 })
+
+                if (this.modelTestState !== MODEL_TEST_IDLE && !this.modelTestRunning) {
+                  Text(this.modelTestState === MODEL_TEST_PASSED ? '模型可用，准确度正常' : '模型不可用或准确度异常')
+                    .fontSize(12)
+                    .fontColor(this.modelTestState === MODEL_TEST_PASSED
+                      ? $r('app.color.signed') : $r('app.color.unsignable'))
+                    .width('100%')
+                    .padding({ left: 16, right: 16, bottom: 12 })
+                }
+              }
+            }
+            .backgroundColor($r('app.color.card_background'))
+            .borderRadius(16)
           }
         }
 

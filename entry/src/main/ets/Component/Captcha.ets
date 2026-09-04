@@ -1,12 +1,17 @@
 import { CaptchaPhotosParam, CaptchaPhotosResult, CaptchaApi } from '../utils/captchaApi'
+import { Http } from '../utils/httpClient'
+import { MsCaptchaDetector } from '../utils/detector/MsCaptchaDetector'
 import { preferences } from '@kit.ArkData'
 import { common } from '@kit.AbilityKit'
 import { promptAction } from '@kit.ArkUI'
+import { image } from '@kit.ImageKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 
 const TAG = 'CaptchaComponent';
 const DOMAIN = 0x000B;
 const CAPTCHA_MEMORY_PREF = 'captcha_memory'
+const SETTINGS_PREF = 'settings'
+const MODEL_CAPTCHA_ENABLED_KEY = 'model_captcha_enabled'
 // 与上游一致的滑块归一化：x = slider / sliderMax * 280 - 8
 const CAPTCHA_NORMALIZED_MAX = 280
 const CAPTCHA_NORMALIZED_OFFSET = -8
@@ -43,10 +48,25 @@ export struct CaptchaComponent {
   @State isLoading: boolean = false
   @State isChecking: boolean = false
   @State errMsg: string = ''
+  /** 设置页 Beta 开关：启用后拉取验证码时直接用本地模型完成滑块验证 */
+  private modelCaptchaEnabled: boolean = false
+  /** 模型每次弹出验证码只自动尝试一次，失败后回退手动，避免失败循环 */
+  private modelTried: boolean = false
   private readonly sliderMax: number = 280
 
-  aboutToAppear(): void {
+  async aboutToAppear(): Promise<void> {
+    await this.loadModelCaptchaPref()
     this.refresh()
+  }
+
+  private async loadModelCaptchaPref() {
+    try {
+      const context = getContext(this) as common.UIAbilityContext
+      const pref = await preferences.getPreferences(context, SETTINGS_PREF)
+      this.modelCaptchaEnabled = await pref.get(MODEL_CAPTCHA_ENABLED_KEY, false) as boolean
+    } catch (e) {
+      this.modelCaptchaEnabled = false
+    }
   }
 
   async refresh() {
@@ -59,7 +79,10 @@ export struct CaptchaComponent {
     this.sliderValue = 0
     try {
       this.info = await CaptchaApi.getCaptchaPhotos(this.captchaUser.refererParams, this.captchaUser.cookies)
-      await this.tryMemoryCheck()
+      const memoryFinished = await this.tryMemoryCheck()
+      if (!memoryFinished && this.modelCaptchaEnabled && !this.modelTried) {
+        await this.tryModelCheck()
+      }
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Load captcha failed: ${(e as Error).message}`)
       this.errMsg = '获取验证码失败，请刷新重试'
@@ -76,14 +99,14 @@ export struct CaptchaComponent {
     return dotIndex >= 0 ? fileName.substring(0, dotIndex) : fileName
   }
 
-  /** 本地验证码记忆：命中则自动校验一次（对齐上游 captchaMemories） */
-  private async tryMemoryCheck() {
+  /** 本地验证码记忆：命中则自动校验一次（对齐上游 captchaMemories），返回是否已通过 */
+  private async tryMemoryCheck(): Promise<boolean> {
     if (!this.captchaUser || !this.info.token) {
-      return
+      return false
     }
     const memoryKey = this.getImageMemoryKey()
     if (!memoryKey) {
-      return
+      return false
     }
     try {
       const context = getContext(this) as common.UIAbilityContext
@@ -93,7 +116,7 @@ export struct CaptchaComponent {
         const validate = await this.checkPosition(memoryX)
         if (validate) {
           this.finish(validate)
-          return
+          return true
         }
         await pref.delete(memoryKey)
         await pref.flush()
@@ -101,6 +124,55 @@ export struct CaptchaComponent {
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Captcha memory check failed: ${(e as Error).message}`)
     }
+    return false
+  }
+
+  /**
+   * Beta：用本地模型识别滑块位置并直接校验（模型输出语义即校验接口的 x，
+   * 与上游 captcha.py 一致）。任一环节失败都不刷新、不重试，
+   * 保留当前验证码回退为手动拖动，避免失败循环。
+   */
+  private async tryModelCheck() {
+    this.modelTried = true
+    let pixelMap: image.PixelMap | undefined = undefined
+    try {
+      const context = getContext(this) as common.UIAbilityContext
+      await MsCaptchaDetector.load(context)
+      const buf = await Http.getBuffer(this.info.imageVerificationVo.shadeImage)
+      const source = image.createImageSource(buf)
+      let created: image.PixelMap | undefined = undefined
+      try {
+        created = await source.createPixelMap({ desiredPixelFormat: image.PixelMapFormat.RGBA_8888 })
+      } finally {
+        source.release()
+      }
+      if (created === undefined) {
+        this.notifyModelFallback()
+        return
+      }
+      pixelMap = created
+      const xOffset = await MsCaptchaDetector.detect(created)
+      if (xOffset < 0) {
+        this.notifyModelFallback()
+        return
+      }
+      const validate = await this.checkPosition(xOffset)
+      if (validate) {
+        await this.saveMemory(xOffset)
+        this.finish(validate)
+      } else {
+        this.notifyModelFallback()
+      }
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `Model captcha check failed: ${(e as Error).message}`)
+      this.notifyModelFallback()
+    } finally {
+      pixelMap?.release()
+    }
+  }
+
+  private notifyModelFallback() {
+    promptAction.showToast({ message: '模型自动验证失败，请手动完成验证', duration: 2000 })
   }
 
   private async checkPosition(normalizedX: number): Promise<string | null> {

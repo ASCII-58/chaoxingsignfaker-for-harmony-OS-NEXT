@@ -13,6 +13,9 @@ import { CaptchaDetector } from './CaptchaDetector';
 //      --outputFile=captcha_fp16_v2 --fp16=on \
 //      --inputDataFormat=NCHW --outputDataFormat=NCHW
 const MODEL_RAWFILE = 'models/captcha_fp16_v2.ms';
+const TEST_IMAGE_RAWFILE = 'models/test.jpg';
+const TEST_BASELINE_X = 258;
+const TEST_TOLERANCE = 5;
 
 /**
  * MindSpore Lite 滑块检测封装：输入一张图片，输出一个数值（滑块 x 偏移，原图坐标）。
@@ -41,6 +44,36 @@ export class MsCaptchaDetector {
 
   static isLoaded(): boolean {
     return MsCaptchaDetector.model !== undefined;
+  }
+
+  /**
+   * 自检：仅验证模型可用性与准确度（内置 test.jpg，基准 x_offset 258，容差 ±5）。
+   * 不抛错：任何加载/推理/解码失败一律返回 false。
+   */
+  static async selfTest(context: common.Context): Promise<boolean> {
+    try {
+      await MsCaptchaDetector.load(context);
+      const buf = context.resourceManager.getRawFileContentSync(TEST_IMAGE_RAWFILE);
+      const source = image.createImageSource(buf.buffer as ArrayBuffer);
+      let pixelMap: image.PixelMap | undefined = undefined;
+      try {
+        pixelMap = await source.createPixelMap({ desiredPixelFormat: image.PixelMapFormat.RGBA_8888 });
+      } finally {
+        source.release();
+      }
+      if (pixelMap === undefined) {
+        return false;
+      }
+      let xOffset = -1;
+      try {
+        xOffset = await MsCaptchaDetector.detect(pixelMap);
+      } finally {
+        pixelMap.release();
+      }
+      return xOffset >= 0 && Math.abs(xOffset - TEST_BASELINE_X) <= TEST_TOLERANCE;
+    } catch (e) {
+      return false;
+    }
   }
 
   /**
