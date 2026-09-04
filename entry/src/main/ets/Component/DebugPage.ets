@@ -5,7 +5,8 @@ import { image } from '@kit.ImageKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DatabaseManager } from '../utils/DataBase';
-import { OnnxRunner, OnnxInput, OnnxOutput } from '../utils/onnx/OnnxRunner';
+import { OnnxRunner } from '../utils/onnx/OnnxRunner';
+import { CaptchaDetector } from '../utils/onnx/CaptchaDetector';
 
 const ONNX_TEST_TAG = 'OnnxTest';
 
@@ -14,31 +15,7 @@ const VERSION = 'version';
 const SIGN_EXPIRY_MS = 12 * 30 * 24 * 60 * 60 * 1000;
 const BACKUP_REMINDER_MS = 11 * 30 * 24 * 60 * 60 * 1000;
 
-// captcha 滑块检测模型测试（model/captcha，预处理与解码逻辑与 captcha.py 一致）
-// v2 = ir_version 9 + fp16 Softmax 展开为 fp32 三明治（ORT 1.16.3 兼容）；
-// 换文件名以绕过沙箱内旧模型的缓存
-const MODEL_RAWFILE = 'models/captcha_fp16_v2.onnx';
 const IMAGE_RAWFILE = 'models/test.jpg';
-const INPUT_SIZE = 640;
-const SCORE_THRESHOLD = 0.25;
-const X_OFFSET_MARGIN = 4;
-
-interface OnnxTestInput {
-  inputs: OnnxInput[];
-  canvasLength: number;
-}
-
-interface OnnxModelResult {
-  label: string;
-  score: number;
-  xOffset: number;
-  boxStr: string;
-  outputName: string;
-  dimsStr: string;
-  sessionMs: number;
-  inferMs: number;
-  detected: boolean;
-}
 
 @Component
 export struct DebugPage {
@@ -47,7 +24,6 @@ export struct DebugPage {
   @State onnxStatus: string = '';
   @State onnxResult: string = '';
   @State onnxRunning: boolean = false;
-  private runner: OnnxRunner | undefined;
   @Consume('pathInfos') pathInfos: NavPathStack;
 
   async aboutToAppear() {
@@ -154,83 +130,37 @@ export struct DebugPage {
     }
     this.onnxRunning = true;
     this.onnxResult = '';
+    let pixelMap: image.PixelMap | undefined = undefined;
     try {
       const start = Date.now();
-      if (this.runner === undefined) {
-        this.onnxStatus = '正在加载模型...';
-        // 共享会话：首次创建（约 66ms），之后复用（0ms）
-        this.runner = await OnnxRunner.getShared(this.context, MODEL_RAWFILE);
-        hilog.info(0x0000, ONNX_TEST_TAG, 'session ready (shared), %{public}d ms', Date.now() - start);
-      }
-      const prepared = await this.prepareModelInput();
-      hilog.info(0x0000, ONNX_TEST_TAG, 'input prepared, %{public}d ms', Date.now() - start);
-      this.onnxStatus =
-        `ORT ${OnnxRunner.getRuntimeVersion()}，输入: ${this.runner.getInputNames().join(',')}`;
-      const outputs = this.runner.run(prepared.inputs);
-      hilog.info(0x0000, ONNX_TEST_TAG, 'run done, %{public}d ms', Date.now() - start);
-      this.onnxResult = this.decodeOutput(outputs, prepared.canvasLength, Date.now() - start);
+      pixelMap = await this.loadTestImage();
+      // 封装后的完整调用：输入一张图片，输出一个数值（滑块 x 偏移）
+      const xOffset = await CaptchaDetector.detect(this.context, pixelMap);
+      hilog.info(0x0000, ONNX_TEST_TAG, 'detect done, %{public}d ms', Date.now() - start);
+      this.onnxStatus = `ORT ${OnnxRunner.getRuntimeVersion()}，耗时 ${Date.now() - start}ms`;
+      this.onnxResult = xOffset >= 0
+        ? `x_offset: ${xOffset}（test.jpg 基准 258）`
+        : '未检测到滑块';
     } catch (e) {
       const err = e as BusinessError;
       hilog.error(0x0000, ONNX_TEST_TAG, 'test failed: %{public}s', err.message);
       this.onnxResult = `测试失败: ${err.message}`;
     } finally {
+      if (pixelMap !== undefined) {
+        pixelMap.release();
+      }
       this.onnxRunning = false;
     }
   }
 
-  private async prepareModelInput(): Promise<OnnxTestInput> {
+  private async loadTestImage(): Promise<image.PixelMap> {
     const buf = this.context.resourceManager.getRawFileContentSync(IMAGE_RAWFILE);
     const source = image.createImageSource(buf.buffer as ArrayBuffer);
-    const info = await source.getImageInfo();
-    const width = info.size.width;
-    const height = info.size.height;
-    const pixelMap = await source.createPixelMap({ desiredPixelFormat: image.PixelMapFormat.RGBA_8888 });
-    const rgba = new Uint8Array(new ArrayBuffer(width * height * 4));
-    await pixelMap.readPixelsToBuffer(rgba.buffer as ArrayBuffer);
-
-    // 与 captcha.py 一致：方形画布右/下补黑 → 整体缩到 640x640 → RGB /255 → CHW
-    // （native 实现，结果与原 ArkTS 逐像素循环逐位一致）
-    const canvasLength = Math.max(width, height);
-    const input = OnnxRunner.preprocessImage(rgba, width, height);
-    pixelMap.release();
-    source.release();
-    return {
-      inputs: [{ dims: [1, 3, INPUT_SIZE, INPUT_SIZE], data: input }],
-      canvasLength: canvasLength
-    };
-  }
-
-  private decodeOutput(outputs: OnnxOutput[], canvasLength: number, elapsedMs: number): string {
-    if (outputs.length === 0) {
-      return '模型无输出';
+    try {
+      return await source.createPixelMap({ desiredPixelFormat: image.PixelMapFormat.RGBA_8888 });
+    } finally {
+      source.release();
     }
-    const pred = OnnxRunner.wrapOutput(outputs[0]) as Float32Array;
-    const channels = outputs[0].dims.length >= 3 ? outputs[0].dims[1] : 5;
-    const anchors = outputs[0].dims.length >= 3 ? outputs[0].dims[2] : Math.floor(pred.length / channels);
-    // NMS 后取最高分的幸存框 == 全局最高分框（最高分必然先被保留），与 captcha.py 结果一致
-    let best = -1;
-    let bestScore = 0;
-    for (let i = 0; i < anchors; i++) {
-      const score = pred[4 * anchors + i];
-      if (score > bestScore) {
-        bestScore = score;
-        best = i;
-      }
-    }
-    const header = `输出 ${outputs[0].name} [${outputs[0].dims.join(',')}]，耗时 ${elapsedMs}ms`;
-    if (best < 0 || bestScore < SCORE_THRESHOLD) {
-      return `${header}\n未检测到滑块（最高置信度 ${bestScore.toFixed(4)}）`;
-    }
-    const cx = pred[0 * anchors + best];
-    const cy = pred[1 * anchors + best];
-    const bw = pred[2 * anchors + best];
-    const bh = pred[3 * anchors + best];
-    // 与 captcha.py 一致：640 坐标 → 原图坐标（左上角画布）→ 左边界 - 4
-    const scale = canvasLength / INPUT_SIZE;
-    const xOffset = Math.trunc((cx - 0.5 * bw) * scale - X_OFFSET_MARGIN + 0.5);
-    return `${header}\n最高置信度: ${bestScore.toFixed(4)}\n` +
-      `x_offset: ${xOffset}（test.jpg 基准 258）\n` +
-      `box(cx,cy,w,h): ${cx.toFixed(1)}, ${cy.toFixed(1)}, ${bw.toFixed(1)}, ${bh.toFixed(1)}`;
   }
 
   build() {
