@@ -28,7 +28,7 @@ export interface CommonSignParams {
   latitude: string;
   longitude: string;
   address: string;
-  enc: string;
+  enc?: string;
   objectId?: string;
   signCode?: string;
   validate?: string;
@@ -112,6 +112,9 @@ export function parseSignResult(raw: string): SignOutcome {
 export class Sign {
   static readonly NEXT_SIGN_INTERVAL_MS = NEXT_SIGN_INTERVAL_MS;
 
+  /** LCR007 排查：最近一次 preSign 页面里提取到的 enc */
+  static lastPreSignEnc: string = '';
+
   /**
    * 预签到（对齐上游：POST ext 表单 + 分析回传）
    * 可签到状态下校验用户是否在班级（对齐上游 checkSignStatusThrowException）
@@ -127,6 +130,39 @@ export class Sign {
     }).toString();
     const response = await Http.postForm(url, `ext=${encodeURIComponent(ext)}`, cookies);
     hilog.debug(DOMAIN, TAG, 'PreSignIn request sent');
+    for (let s = 0; s < 6; s++) {
+      const slice = response.body.substring(s * 3000, (s + 1) * 3000).replace(/\s+/g, ' ');
+      if (slice) {
+        hilog.info(DOMAIN, TAG, `PreSign part${s}: ${slice}`);
+      }
+    }
+    const encPositions: number[] = [];
+    let searchFrom = 0;
+    while (encPositions.length < 10) {
+      const idx = response.body.indexOf('enc', searchFrom);
+      if (idx < 0) {
+        break;
+      }
+      encPositions.push(idx);
+      searchFrom = idx + 3;
+    }
+    const contexts = encPositions.map(i =>
+      response.body.substring(Math.max(0, i - 40), i + 60).replace(/\s+/g, ' '));
+    hilog.info(DOMAIN, TAG, `PreSign enc contexts: ${JSON.stringify(contexts)}`);
+    const encPatterns: RegExp[] = [
+      /name="enc"[^>]*value="([^"]{8,})"/,
+      /enc\s*=\s*['"]([A-Za-z0-9+/=_-]{10,})['"]/,
+      /"enc"\s*:\s*"([^"]{8,})"/
+    ];
+    Sign.lastPreSignEnc = '';
+    for (const p of encPatterns) {
+      const m = p.exec(response.body);
+      if (m && m[1]) {
+        Sign.lastPreSignEnc = m[1];
+        hilog.info(DOMAIN, TAG, `PreSign enc found: ${m[1]}`);
+        break;
+      }
+    }
     if (response.code === 302 || response.body.includes(SIGN_NO_PERMISSION_MARKER)) {
       return -1;
     }
@@ -169,9 +205,11 @@ export class Sign {
       activeId: commonQueryParams.activeId,
       latitude: commonQueryParams.latitude,
       longitude: commonQueryParams.longitude,
-      address: commonQueryParams.address,
-      enc: commonQueryParams.enc
+      address: commonQueryParams.address
     };
+    if (commonQueryParams.enc) {
+      commonParams.enc = commonQueryParams.enc;
+    }
     if (commonQueryParams.objectId) {
       commonParams.objectId = commonQueryParams.objectId;
     }
@@ -195,7 +233,11 @@ export class Sign {
     if (validate) {
       builder = builder.buildUrl({ 'validate': validate });
     }
-    return (await Http.get(builder.toString(), cookies)).body;
+    const requestUrl = builder.toString();
+    hilog.info(DOMAIN, TAG, `DoSignInV2 request: ${requestUrl}`);
+    const body = (await Http.get(requestUrl, cookies)).body;
+    hilog.info(DOMAIN, TAG, `DoSignInV2 response: ${body}`);
+    return body;
   }
 
   /**
@@ -229,6 +271,7 @@ export class Sign {
   static async GetActiveDetail(cookies: string, activityId: string): Promise<SignDetailResult> {
     const url = ChaoXingApi.URL_IF_PHOTO.buildUrl({ 'activeId': activityId }).toString();
     const body = await Http.getJson(url, cookies);
+    hilog.info(DOMAIN, TAG, `GetActiveDetail raw: ${JSON.stringify(body).substring(0, 800)}`);
     const data = (body?.['data'] ?? JSON.parse('{}')) as object;
     const signOutPublishTimeStamp = (data?.['signOutPublishTimeStamp'] as number) ?? -1;
     return {
@@ -245,6 +288,38 @@ export class Sign {
       ifrefreshewm: (data?.['ifrefreshewm'] as number) ?? 0,
       otherId: `${data?.['otherId'] ?? ''}`
     };
+  }
+
+  /**
+   * 从签到页面 HTML 提取 enc（位置签到 LCR007 排查实验）
+   */
+  static async GetSignEnc(cookies: string, activityId: string): Promise<string> {
+    try {
+      if (Sign.lastPreSignEnc) {
+        hilog.info(DOMAIN, TAG, `SignEnc from preSign: ${Sign.lastPreSignEnc}`);
+        return Sign.lastPreSignEnc;
+      }
+      const url = ChaoXingApi.URL_SIGN_PAGE.buildUrl({ 'activeId': activityId }).toString();
+      const response = await Http.get(url, cookies);
+      hilog.info(DOMAIN, TAG, `SignPage head: ${response.body.substring(0, 600)}`);
+      const patterns: RegExp[] = [
+        /enc=['"]([0-9a-zA-Z]{8,})['"]/,
+        /"enc"\s*:\s*"([^"]{8,})"/,
+        /enc=([0-9a-fA-F]{16,})/
+      ];
+      for (const p of patterns) {
+        const m = p.exec(response.body);
+        if (m && m[1]) {
+          hilog.info(DOMAIN, TAG, `SignEnc found: ${m[1]}`);
+          return m[1];
+        }
+      }
+      hilog.info(DOMAIN, TAG, 'SignEnc not found in page');
+      return '';
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `GetSignEnc failed: ${(error as Error).message}`);
+      return '';
+    }
   }
 
   /**

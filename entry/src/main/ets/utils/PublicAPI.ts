@@ -99,6 +99,11 @@ export class ChaoXingApi {
   static readonly URL_CHECK_SIGN_CODE =
     new BuildableUrl('https://mobilelearn.chaoxing.com/widget/sign/pcStuSignController/checkSignCode')
   /**
+   * 签到页面（用于提取位置签到 enc）
+   */
+  static readonly URL_SIGN_PAGE =
+    new BuildableUrl('https://mobilelearn.chaoxing.com/widget/sign/pcStuSignController?')
+  /**
    * 签退
    */
   static readonly URL_SIGN_OUT = new BuildableUrl('https://mobilelearn.chaoxing.com/newsign/signOut')

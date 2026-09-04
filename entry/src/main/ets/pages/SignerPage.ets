@@ -252,6 +252,10 @@ export struct SignPage {
                 return;
               }
               const LoginLocation = ChaoxingUtils.gcj02_to_bd09(data.latitude, data.longitude)
+              hilog.info(DOMAIN, TAG,
+                `PickedLocation raw(gcj02): lat=${data.latitude} lon=${data.longitude} name=${data.name}`);
+              hilog.info(DOMAIN, TAG,
+                `PickedLocation bd09: lat=${LoginLocation.lat} lon=${LoginLocation.lon}`);
               this.commonQueryParams.address = data.name as string;
               this.commonQueryParams.longitude = LoginLocation.lon.toString();
               this.commonQueryParams.latitude = LoginLocation.lat.toString();
@@ -771,7 +775,12 @@ export struct SignPage {
     }
 
     // 非扫码签到：统一签到流程
-    await this.executeSignFlow(this.pendingSignCode, this.commonQueryParams.enc)
+    let encForSign = this.commonQueryParams.enc ?? ''
+    if (this.activityInfo?.signType === SignType.LOCATION && !encForSign && this.hostCookies) {
+      encForSign = await Sign.GetSignEnc(this.hostCookies, this.activityInfo?.ActivityId || '')
+      hilog.info(DOMAIN, TAG, `Location sign enc: ${encForSign || '(empty)'}`)
+    }
+    await this.executeSignFlow(this.pendingSignCode, encForSign)
   }
 
   /**

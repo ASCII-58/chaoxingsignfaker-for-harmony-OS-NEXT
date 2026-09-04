@@ -5,6 +5,12 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 const TAG = 'HttpClient';
 const DOMAIN = 0x0010;
 
+/** 对齐上游 chaoxingUserAgent 默认值：官方学习通 Android 客户端 UA（LCR007 排查实验） */
+const CHAOXING_APP_UA = 'Dalvik/2.1.0 (Linux; U; Android 12; SM-N9006 Build/8aba9e4.0) ' +
+  '(schild:2d97f7b9439f21333c946878fc4d6ccb) (device:SM-N9006) Language/zh_CN ' +
+  'com.chaoxing.mobile/ChaoXingStudy_3_6.7.5_android_phone_10941_314 ' +
+  '(@Kalimdor)_68f184fd763546c1a04ab3a09b3deebb';
+
 /** 原始响应（body 为文本） */
 export interface RawHttpResponse {
   code: number;
@@ -85,6 +91,9 @@ export class Http {
       for (let i = 0; i < headerKeys.length; i++) {
         header[headerKeys[i]] = extraHeaders[headerKeys[i]];
       }
+    }
+    if (!header['User-Agent']) {
+      header['User-Agent'] = CHAOXING_APP_UA;
     }
     const httpRequest = http.createHttp();
     try {
