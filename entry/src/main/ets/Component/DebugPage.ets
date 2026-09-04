@@ -5,8 +5,7 @@ import { image } from '@kit.ImageKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DatabaseManager } from '../utils/DataBase';
-import { OnnxRunner } from '../utils/onnx/OnnxRunner';
-import { CaptchaDetector } from '../utils/onnx/CaptchaDetector';
+import { MsCaptchaDetector } from '../utils/detector/MsCaptchaDetector';
 
 const ONNX_TEST_TAG = 'OnnxTest';
 
@@ -31,7 +30,7 @@ export struct DebugPage {
   }
 
   aboutToDisappear() {
-    // 共享会话进程级常驻（OnnxRunner.getShared），不在此处关闭
+    // MindSpore Lite 模型进程级常驻（MsCaptchaDetector.load 缓存），不在此处关闭
   }
 
   async loadInfo() {
@@ -133,11 +132,12 @@ export struct DebugPage {
     let pixelMap: image.PixelMap | undefined = undefined;
     try {
       const start = Date.now();
+      const loadMs = await MsCaptchaDetector.load(this.context);
       pixelMap = await this.loadTestImage();
       // 封装后的完整调用：输入一张图片，输出一个数值（滑块 x 偏移）
-      const xOffset = await CaptchaDetector.detect(this.context, pixelMap);
+      const xOffset = await MsCaptchaDetector.detect(pixelMap);
       hilog.info(0x0000, ONNX_TEST_TAG, 'detect done, %{public}d ms', Date.now() - start);
-      this.onnxStatus = `ORT ${OnnxRunner.getRuntimeVersion()}，耗时 ${Date.now() - start}ms`;
+      this.onnxStatus = `MindSpore Lite（加载 ${loadMs}ms），耗时 ${Date.now() - start}ms`;
       this.onnxResult = xOffset >= 0
         ? `x_offset: ${xOffset}（test.jpg 基准 258）`
         : '未检测到滑块';
@@ -287,15 +287,9 @@ export struct DebugPage {
           }.onClick(()=>{ this.pathInfos.pushPath({ name: 'Debug' }) })
         }
 
-        ListItem(){
-          Column(){
-            Text('模型对比：MindSpore Lite vs ONNX')
-          }.onClick(()=>{ this.pathInfos.pushPath({ name: 'ModelCompare' }) })
-        }
-
         ListItem() {
           Column() {
-            Text('ONNX 模型测试')
+            Text('滑块检测测试（MindSpore Lite）')
               .fontSize(14)
               .fontColor($r('sys.color.ohos_id_color_text_secondary'))
               .width('100%')

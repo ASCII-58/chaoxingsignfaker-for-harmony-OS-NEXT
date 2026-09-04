@@ -1,12 +1,12 @@
 import { mindSporeLite } from '@kit.MindSporeLiteKit';
 import { image } from '@kit.ImageKit';
 import { common } from '@kit.AbilityKit';
-import { OnnxRunner, OnnxOutput } from './OnnxRunner';
+import { DetTensor, ImagePreprocess } from './ImagePreprocess';
 import { CaptchaDetector } from './CaptchaDetector';
 
-// 华为原生 MindSpore Lite 推理封装：与 CaptchaDetector（ONNX）跑同一份模型
-// （captcha_fp16_v2.onnx 经 mindspore 转换出的 .ms），预处理与解码完全共用，
-// 仅推理后端不同，用于对比验证两个后端的结果一致性与耗时。
+// 华为原生 MindSpore Lite（系统内置）滑块检测推理封装：模型为
+// captcha_fp16_v2.onnx 经 mindspore 转换出的 .ms，预处理（ImagePreprocess）
+// 与解码（CaptchaDetector.decode）均为后端无关实现。
 // ⚠️ .ms 必须以以下命令转换，否则运行时会把 NCHW 输入缓冲按 NHWC 误读，
 //    特征全错、检测偏移漂移（曾表现为 83 vs 基准 257）：
 //    converter_lite --fmk=ONNX --modelFile=captcha_fp16_v2.onnx \
@@ -45,7 +45,7 @@ export class MsCaptchaDetector {
 
   /**
    * 检测滑块 x 偏移。
-   * @param pixelMap 输入图片，必须为 RGBA_8888 格式（与 CaptchaDetector.detect 一致）
+   * @param pixelMap 输入图片，必须为 RGBA_8888 格式
    * @returns 滑块左边界的 x 偏移（已含 4px 余量，原图坐标）；未检测到返回 -1
    */
   static async detect(pixelMap: image.PixelMap): Promise<number> {
@@ -54,14 +54,13 @@ export class MsCaptchaDetector {
     const height = info.size.height;
     const rgba = new Uint8Array(new ArrayBuffer(width * height * 4));
     await pixelMap.readPixelsToBuffer(rgba.buffer as ArrayBuffer);
-    // 与 ONNX 完全同一份 native 预处理：方形补黑 → 640x640 → RGB /255 → CHW
-    const input = OnnxRunner.preprocessImage(rgba, width, height);
+    // 预处理与 captcha.py 一致：方形补黑 → 640x640 最近邻 → RGB /255 → CHW
+    const input = ImagePreprocess.preprocessImage(rgba, width, height);
     return MsCaptchaDetector.runFromInput(input, Math.max(width, height));
   }
 
   /**
    * 用已预处理好的 [1,3,640,640] float32 输入推理并解码。
-   * 对比调试用：可与 ONNX 后端共享同一份预处理输入，保证逐位相同的输入。
    * @returns 滑块左边界的 x 偏移（原图坐标）；未检测到返回 -1
    */
   static async runFromInput(input: Float32Array, canvasLength: number): Promise<number> {
@@ -83,9 +82,9 @@ export class MsCaptchaDetector {
     return CaptchaDetector.decode(MsCaptchaDetector.wrapOutputs(outputs), canvasLength);
   }
 
-  /** MSTensor[] → OnnxOutput[]（fp16 输出转为 fp32，保证共用 ONNX 解码路径） */
-  private static wrapOutputs(tensors: mindSporeLite.MSTensor[]): OnnxOutput[] {
-    const results: OnnxOutput[] = [];
+  /** MSTensor[] → DetTensor[]（fp16 输出转为 fp32，保证共用解码路径） */
+  private static wrapOutputs(tensors: mindSporeLite.MSTensor[]): DetTensor[] {
+    const results: DetTensor[] = [];
     for (const t of tensors) {
       const raw = t.getData();
       if (t.dtype === mindSporeLite.DataType.NUMBER_TYPE_FLOAT32) {

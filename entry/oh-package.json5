@@ -4,8 +4,5 @@
   "description": "Please describe the basic information.",
   "main": "",
   "author": "ASCII58",
-  "license": "",
-  "dependencies": {
-    "libonnxruntime_napi.so": "file:./src/main/cpp/types/libonnxruntime_napi"
-  }
+  "license": ""
 }

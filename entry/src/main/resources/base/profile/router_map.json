@@ -29,10 +29,6 @@
       "name": "DebugPanel",
       "pageSourceFile": "src/main/ets/pages/DebugPanelPage.ets",
       "buildFunction": "init"
-    },{
-      "name": "ModelCompare",
-      "pageSourceFile": "src/main/ets/pages/ModelComparePage.ets",
-      "buildFunction": "init"
     }
   ]
 }
