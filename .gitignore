@@ -22,6 +22,7 @@
 
 # Local configuration
 /local.properties
+/model
 *.log
 *.hap
 *.app
