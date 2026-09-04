@@ -15,7 +15,6 @@ import { systemShare } from '@kit.ShareKit';
 import { preferences, uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { common, Want } from '@kit.AbilityKit';
 import { SettingsComponent } from '../Component/SettingsComponent';
-import { DebugPage } from '../Component/DebugPage';
 
 const TAG = 'IndexPage';
 const DOMAIN = 0x0004;
@@ -108,6 +107,7 @@ export function init(name: string) {
 
 @Component
 struct UserInfoComponent {
+  @Consume('pathInfos') pathInfos: NavPathStack;
   @State HostImageData: image.PixelMap | Resource = $r('app.media.foreground')
   @Prop url: string
   @Prop hostName: Resource | string
@@ -120,7 +120,6 @@ struct UserInfoComponent {
   @State shareLoading: boolean = false
   @State isReady: boolean = false
   @State avatarTapCount: number = 0
-  @State debugPwdInput: string = ''
   private avatarTapTimer: number = -1
   private uiContext: UIContext = this.getUIContext();
   private context: Context = this.uiContext.getHostContext() as Context;
@@ -131,52 +130,15 @@ struct UserInfoComponent {
     })
   }
 
-  openDebugSheet() {
+  // 头像连点/长按 → 直接进入 Debug 路由页（密码校验在面板页内完成，
+  // 不再经过 bindSheet，避免全屏 sheet 遮挡其内 pushPath 的子页面）
+  openDebugPanel() {
     this.avatarTapCount = 0
-    this.debugPwdInput = ''
-    this.activeSheet = -2
-    this.sheetVisible = true
+    this.pathInfos.pushPath({ name: 'DebugPanel' })
   }
 
   @Builder UnifiedSheet() {
-    if (this.activeSheet === -2) {
-      // // 半屏弹层拖拽指示条
-      // Column()
-      //   .width(36).height(4).borderRadius(2)
-      //   .margin({ top: 10 })
-      Column() {
-        Text('输入调试密码')
-          .fontSize(24).fontWeight(FontWeight.Bold)
-          .width('100%').textAlign(TextAlign.Start)
-          .padding({ left: 20, bottom: 20 })
-        TextInput({ placeholder: '请输入密码', text: $$this.debugPwdInput })
-          .type(InputType.Password)
-          .width('90%').height(50)
-          .backgroundColor($r('sys.color.ohos_id_color_text_field_sub_bg'))
-          .borderRadius(12)
-          .margin({ bottom: 20 })
-        Button('确认')
-          .width('90%').height(50)
-          .fontColor($r('app.color.text_on_primary'))
-          .backgroundColor($r('app.color.class_button'))
-          .borderRadius(25)
-          .onClick(() => {
-            if (this.debugPwdInput === 'nnn') {
-              this.sheetVisible = false;
-              this.debugPwdInput = '';
-              this.activeSheet = 2;
-              setTimeout(() => { this.sheetVisible = true; }, 300);
-            } else {
-              promptAction.showToast({ message: '密码错误' });
-              this.debugPwdInput = '';
-            }
-          })
-        Blank()
-      }
-      .width('100%').height('100%')
-      .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
-      .borderRadius({ topLeft: 20, topRight: 20 })
-    } else if (this.activeSheet === 0) {
+    if (this.activeSheet === 0) {
       SettingsComponent()
     } else if (this.activeSheet === 1) {
       Column() {
@@ -222,8 +184,6 @@ struct UserInfoComponent {
       .width('100%').height('100%')
       .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
       .borderRadius({ topLeft: 20, topRight: 20 })
-    } else if (this.activeSheet === 2) {
-      DebugPage()
     }
   }
 
@@ -239,13 +199,13 @@ struct UserInfoComponent {
           this.avatarTapCount++;
           clearTimeout(this.avatarTapTimer);
           if (this.avatarTapCount >= 5) {
-            this.openDebugSheet();
+            this.openDebugPanel();
           } else {
             this.avatarTapTimer = setTimeout(() => { this.avatarTapCount = 0; }, 1500);
           }
         })
         .gesture(LongPressGesture({ repeat: false, duration: 800 })
-          .onAction(() => { this.openDebugSheet(); }))
+          .onAction(() => { this.openDebugPanel(); }))
       Column() {
         Text(this.hostName).fontSize(18).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.primary_text')).maxLines(1)
