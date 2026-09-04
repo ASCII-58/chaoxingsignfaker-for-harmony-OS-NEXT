@@ -15,6 +15,22 @@ const MODEL_TEST_IDLE = 0;
 const MODEL_TEST_PASSED = 1;
 const MODEL_TEST_FAILED = 2;
 const COLOR_MODE_LABELS = ['自动', '浅色', '深色'];
+
+// 应用内更新日志数据结构（来源：rawfile/changelog.json，更新日志只需编辑该文件）
+interface ChangelogSection {
+  title: string;
+  items: string[];
+}
+
+interface ChangelogRelease {
+  version: string;
+  date: string;
+  sections: ChangelogSection[];
+}
+
+interface ChangelogFile {
+  releases: ChangelogRelease[];
+}
 const COLOR_MODE_ICONS: Resource[] = [
   $r('app.media.ic_theme_auto'),
   $r('app.media.ic_theme_light'),
@@ -271,18 +287,41 @@ export struct SettingsComponent {
     });
   }
 
-  showChangelog() {
-    AlertDialog.show({
-      title: '更新日志 (2026-05-16)',
-      message: '新增功能：\n' +
-        '• 数据库导出/导入 — 设置页支持将用户数据导出为JSON文件并通过分享保存，支持导入并自动校验格式\n' +
-        '• 实名认证引导 — 首次启动询问是否已完成开发者实名认证，未认证/有效期将尽时弹出备份提醒\n' +
-        '• 使用时长显示 — 用户中心新增已使用时长\n' +
-        '• 二维码分享图片质量提升至100\n' +
-        '• 修复主用户登录后无法跳转首页的问题\n' +
-        '• 修复多个弹窗冲突导致设置页无法打开的问题',
-      confirm: { value: '知道了', action: () => {} }
-    });
+  /**
+   * 从 rawfile/changelog.json 加载更新日志并展示最新版本
+   * 新增版本时只需在 changelog.json 的 releases 数组头部追加一条，无需改代码
+   */
+  async showChangelog() {
+    try {
+      const raw = await this.context.resourceManager.getRawFileContent('changelog.json');
+      const text = util.TextDecoder.create('utf-8', { ignoreBOM: true })
+        .decodeWithStream(raw, { stream: false });
+      const file = JSON.parse(text) as ChangelogFile;
+      if (!file.releases || file.releases.length === 0) {
+        throw new Error('changelog.json has no releases');
+      }
+      const latest = file.releases[0];
+      let message = '';
+      for (const section of latest.sections) {
+        message += `${section.title}：\n`;
+        for (const item of section.items) {
+          message += `• ${item}\n`;
+        }
+        message += '\n';
+      }
+      AlertDialog.show({
+        title: `更新日志 v${latest.version} (${latest.date})`,
+        message: message.trim(),
+        confirm: { value: '知道了', action: () => {} }
+      });
+    } catch (error) {
+      console.error('Failed to load changelog', JSON.stringify(error));
+      AlertDialog.show({
+        title: '更新日志',
+        message: '更新日志加载失败',
+        confirm: { value: '知道了', action: () => {} }
+      });
+    }
   }
 
   @Builder
