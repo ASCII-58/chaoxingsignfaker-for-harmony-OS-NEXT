@@ -5,7 +5,7 @@ import { OnnxRunner, OnnxOutput } from './OnnxRunner';
 // captcha 滑块检测模型（model/captcha，预处理与解码逻辑与 captcha.py 一致）
 // v2 = ir_version 9 + fp16 Softmax 展开为 fp32 三明治（ORT 1.16.3 兼容）
 const MODEL_RAWFILE = 'models/captcha_fp16_v2.onnx';
-const INPUT_SIZE = 640;
+export const INPUT_SIZE = 640;
 const SCORE_THRESHOLD = 0.25;
 const X_OFFSET_MARGIN = 4;
 
@@ -35,8 +35,8 @@ export class CaptchaDetector {
     return CaptchaDetector.decode(outputs, Math.max(width, height));
   }
 
-  /** 输出 [1,5,8400] → 最高分框的 x_offset；无框或置信度不足返回 -1 */
-  private static decode(outputs: OnnxOutput[], canvasLength: number): number {
+  /** 输出 [1,5,8400] → 最高分框的 x_offset；无框或置信度不足返回 -1（ONNX 与 MindSpore Lite 共用） */
+  static decode(outputs: OnnxOutput[], canvasLength: number): number {
     if (outputs.length === 0) {
       return -1;
     }

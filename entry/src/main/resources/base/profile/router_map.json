@@ -25,6 +25,10 @@
       "name": "Debug",
       "pageSourceFile": "src/main/ets/pages/DebugInfoPage.ets",
       "buildFunction": "init"
+    },{
+      "name": "ModelCompare",
+      "pageSourceFile": "src/main/ets/pages/ModelComparePage.ets",
+      "buildFunction": "init"
     }
   ]
 }

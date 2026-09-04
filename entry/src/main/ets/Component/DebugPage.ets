@@ -287,6 +287,12 @@ export struct DebugPage {
           }.onClick(()=>{ this.pathInfos.pushPath({ name: 'Debug' }) })
         }
 
+        ListItem(){
+          Column(){
+            Text('模型对比：MindSpore Lite vs ONNX')
+          }.onClick(()=>{ this.pathInfos.pushPath({ name: 'ModelCompare' }) })
+        }
+
         ListItem() {
           Column() {
             Text('ONNX 模型测试')
